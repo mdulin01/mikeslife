@@ -117,3 +117,30 @@ textarea{min-height:88px;resize:vertical;line-height:1.5}
 .login p{color:var(--mut);font-size:14px;margin-bottom:22px;max-width:320px}
 .login button{background:linear-gradient(135deg,var(--teal),var(--emerald));color:#04201c;border:none;border-radius:12px;padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer}
 .login .err{color:var(--rose);font-size:13px;margin-top:14px;max-width:340px}
+
+/* planning */
+.substrip{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px}
+.substrip button{flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);color:var(--mut);padding:7px 13px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer}
+.substrip button.on{background:var(--panel);border-color:var(--teal);color:var(--txt)}
+.planhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.planhead .nm{font-size:15px;font-weight:700}
+.planhead .nt{font-size:12px;color:var(--dim);margin-top:2px}
+.prog{height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;margin:10px 0}
+.prog>div{height:100%;background:linear-gradient(90deg,var(--teal),var(--emerald))}
+.stage{margin-top:12px}
+.stage .sh{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-bottom:6px}
+.task{display:flex;align-items:center;gap:10px;padding:7px 0;cursor:pointer}
+.task .box{width:18px;height:18px;border-radius:6px;border:2px solid var(--line);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:12px;color:#04201c}
+.task.done .box{background:var(--emerald);border-color:var(--emerald)}
+.task .tt{font-size:14px}
+.task.done .tt{color:var(--dim);text-decoration:line-through}
+.gauge{margin-bottom:9px}
+.gauge label{display:flex;justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:3px;text-transform:capitalize;font-weight:600}
+.gauge input{width:100%}
+.branchwrap{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.branch{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13px;display:flex;align-items:center;gap:8px}
+.branch button{background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;line-height:1}
+.branch button:hover{color:var(--rose)}
+.mind-center{text-align:center;background:linear-gradient(135deg,rgba(45,212,191,.15),rgba(56,189,248,.06));border:1px solid var(--line);border-radius:14px;padding:14px;font-weight:700;font-size:16px}
+.addrow{display:flex;gap:8px;margin-top:12px}
+.addrow input{flex:1}

@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { FIREBASE_READY, OWNER_UID, auth, provider } from './firebase';
 import { useLifeData } from './useLifeData';
+import PlanningHub from './planning';
 import {
   PILLARS, COL, SDOT, PILLAR_LABEL, TODAY_POOL, QUOTES,
   WEEK_DAYS, WEEK_EVENTS, MAILS, CODING_UPDATES,
@@ -10,7 +11,7 @@ import {
 
 const TABS = [
   ['checkin', 'Check-in'], ['today', 'Today'], ['inbox', 'Inbox'],
-  ['calendar', 'Calendar'], ['email', 'Email'], ['plans', 'Plans'],
+  ['planning', 'Planning'], ['calendar', 'Calendar'], ['email', 'Email'],
   ['people', 'People'], ['updates', 'Coding Updates'],
 ];
 
@@ -277,7 +278,11 @@ export default function App() {
   const [capVal, setCapVal] = useState(5);
 
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
-  const { data, resolveProposal, saveCheckin } = useLifeData(user);
+  const {
+    data, resolveProposal, saveCheckin,
+    activatePlan, setPlanStatus, toggleTask,
+    updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
+  } = useLifeData(user);
 
   useEffect(() => {
     if (!FIREBASE_READY) return;
@@ -351,7 +356,19 @@ export default function App() {
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
           {tab === 'calendar' && <Calendar />}
           {tab === 'email' && <Email />}
-          {tab === 'plans' && <Plans plans={data.plans} />}
+          {tab === 'planning' && (
+            <PlanningHub
+              data={data}
+              activatePlan={activatePlan}
+              setPlanStatus={setPlanStatus}
+              toggleTask={toggleTask}
+              updateOdyssey={updateOdyssey}
+              addGoodTime={addGoodTime}
+              setMindTopic={setMindTopic}
+              addMindBranch={addMindBranch}
+              removeMindBranch={removeMindBranch}
+            />
+          )}
           {tab === 'people' && <People people={data.people} />}
           {tab === 'updates' && <CodingUpdates />}
         </>

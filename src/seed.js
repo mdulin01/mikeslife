@@ -39,16 +39,90 @@ export const SEED_PROPOSALS = [
     why:'mikeshealth flags one preventive-care item past due.', act:'Book it; log the date so the flag clears.' },
 ];
 
+// ── Planning templates: Activate a plan → stages → checkable to-dos ──
+export const PLAN_TEMPLATES = {
+  trip: [
+    { title: 'Decide & commit', tasks: ['Confirm who’s coming', 'Pick target dates'] },
+    { title: 'Travel', tasks: ['Compare flights vs. driving', 'Book transport', 'Reserve lodging'] },
+    { title: 'Logistics', tasks: ['Sort gear & supplies', 'Make a packing list'] },
+    { title: 'Lock it in', tasks: ['Book it', 'Share the plan with everyone'] },
+  ],
+  learning: [
+    { title: 'Set the goal', tasks: ['Define the outcome', 'Set a target date'] },
+    { title: 'Method & resources', tasks: ['Pick an app / course / tutor', 'Gather materials'] },
+    { title: 'Build the habit', tasks: ['Schedule recurring practice', 'Start a streak'] },
+    { title: 'Milestones', tasks: ['Set a first checkpoint', 'Plan a real-world / immersion test'] },
+  ],
+  event: [
+    { title: 'Date & guests', tasks: ['Pick a date', 'Draft the guest list'] },
+    { title: 'Logistics', tasks: ['Choose venue / location', 'Sort food & supplies'] },
+    { title: 'Invite & confirm', tasks: ['Send invites', 'Track RSVPs'] },
+  ],
+  career: [
+    { title: 'Research the space', tasks: ['Map the landscape', 'Find 3 examples to study'] },
+    { title: 'Talk to people', tasks: ['List 5 people to talk to', 'Reach out'] },
+    { title: 'Prototype a small bet', tasks: ['Design a low-risk experiment', 'Run it'] },
+    { title: 'Decide', tasks: ['Review what you learned', 'Commit or pivot'] },
+  ],
+  generic: [
+    { title: 'Clarify the outcome', tasks: ['Write what “done” looks like'] },
+    { title: 'Break it down', tasks: ['List the major steps'] },
+    { title: 'First actions', tasks: ['Pick the first task', 'Schedule it'] },
+  ],
+};
+
+// Build stages (with ids) from a template — used on Activate.
+export function stagesFromTemplate(type) {
+  const tpl = PLAN_TEMPLATES[type] || PLAN_TEMPLATES.generic;
+  return tpl.map((s, i) => ({
+    id: `s${i}_${Date.now()}`,
+    title: s.title,
+    tasks: s.tasks.map((t, j) => ({ id: `t${i}_${j}_${Date.now()}`, text: t, done: false })),
+  }));
+}
+
+// status: 'someday' | 'active' | 'done' ; type drives the template
 export const SEED_PLANS = [
-  { id:'p1', title:'🇪🇸 A month in Spain', note:'Live there ~4 weeks and actually learn Spanish.', pk:'fun' },
-  { id:'p2', title:'⛵ Caribbean sailing', note:'Learn to sail with Chris.', pk:'fun' },
-  { id:'p3', title:'👩 Go see Mom', note:'Don’t let it keep sliding — pick a date.', pk:'rel' },
-  { id:'p4', title:'💝 Something special for Adam', note:'A surprise / a trip / a gesture worth planning.', pk:'rel' },
-  { id:'p5', title:'🏕️ Camping with my son', note:'Get a weekend on the calendar.', pk:'rel' },
-  { id:'p6', title:'🥾 Hiking in Alaska', note:'Bucket-list trip.', pk:'fun' },
-  { id:'p7', title:'💪 Health splurge', note:'Botox, teeth whitening, travel to see the urologist.', pk:'health' },
-  { id:'p8', title:'🏠 UK co-living experiment', note:'Try the co-living thing for a stretch.', pk:'fun' },
+  { id:'p1', title:'🇪🇸 A month in Spain', note:'Live there ~4 weeks and actually learn Spanish.', pk:'fun', type:'trip', status:'someday', stages:[] },
+  { id:'p_spanish', title:'🇪🇸 Learn Spanish', note:'A real conversational goal — ties into the Spain month.', pk:'purpose', type:'learning', status:'someday', stages:[] },
+  { id:'p2', title:'⛵ Caribbean sailing', note:'Learn to sail with Chris.', pk:'fun', type:'trip', status:'someday', stages:[] },
+  { id:'p3', title:'👩 Go see Mom', note:'Don’t let it keep sliding — pick a date.', pk:'rel', type:'trip', status:'someday', stages:[] },
+  { id:'p4', title:'💝 Something special for Adam', note:'A surprise / a trip / a gesture worth planning.', pk:'rel', type:'generic', status:'someday', stages:[] },
+  { id:'p_camp', title:'🏕️ Camping with Josh', note:'A trip with my son, Josh Dulin.', pk:'rel', type:'trip', status:'active', stages:[
+    { id:'cs1', title:'Decide & commit', tasks:[ {id:'ct1', text:'Ask Josh', done:false}, {id:'ct2', text:'Find a date', done:false} ] },
+    { id:'cs2', title:'Travel', tasks:[ {id:'ct3', text:'Look for flights', done:false}, {id:'ct4', text:'Decide: drive to Detroit vs. fly', done:false}, {id:'ct5', text:'Rent a car', done:false} ] },
+    { id:'cs3', title:'Gear & supplies', tasks:[ {id:'ct6', text:'Figure out how to get camping supplies there', done:false} ] },
+    { id:'cs4', title:'Where', tasks:[ {id:'ct7', text:'Find a park / campground to camp at', done:false}, {id:'ct8', text:'Book the site', done:false} ] },
+  ] },
+  { id:'p6', title:'🥾 Hiking in Alaska', note:'Bucket-list trip.', pk:'fun', type:'trip', status:'someday', stages:[] },
+  { id:'p_bday', title:'🎂 60th birthday trip', note:'January 2027 — somewhere warm. Cruise or Key West?', pk:'fun', type:'trip', status:'active', stages:[
+    { id:'bs1', title:'Decide the destination', tasks:[ {id:'bt1', text:'Compare: cruise vs. Key West', done:false}, {id:'bt2', text:'Pick warm-weather dates in January 2027', done:false} ] },
+    { id:'bs2', title:'Who & budget', tasks:[ {id:'bt3', text:'Decide who comes (Adam, friends?)', done:false}, {id:'bt4', text:'Set a budget', done:false} ] },
+    { id:'bs3', title:'Book', tasks:[ {id:'bt5', text:'Book travel + lodging / cabin', done:false} ] },
+  ] },
+  { id:'p7', title:'💪 Health splurge', note:'Botox, teeth whitening, travel to see the urologist.', pk:'health', type:'generic', status:'someday', stages:[] },
+  { id:'p8', title:'🏠 UK co-living experiment', note:'Try the co-living thing for a stretch.', pk:'fun', type:'trip', status:'someday', stages:[] },
 ];
+
+// Design Your Life — Odyssey Plans (3 alternate 5-year paths)
+export const ODYSSEY_GAUGES = ['resources', 'like', 'confidence', 'coherence'];
+export const SEED_ODYSSEY = [
+  { id:'a', title:'Plan A — Keep building', sketch:'Grow the fractional CMO / advisory work and the life-design course. Steady, known, compounding.', gauges:{ resources:4, like:3, confidence:4, coherence:4 } },
+  { id:'b', title:'Plan B — Precision Medicine', sketch:'Turn lived genetics experience into a precision-medicine venture or advisory practice.', gauges:{ resources:3, like:4, confidence:3, coherence:4 } },
+  { id:'c', title:'Plan C — Age-gap couples', sketch:'Build support / services for age-gap couples — content, community, coaching.', gauges:{ resources:2, like:4, confidence:2, coherence:3 } },
+];
+
+// Good Time Journal — log activities by energy + engagement
+export const SEED_GOODTIME = [
+  { id:'g1', activity:'Morning zone-2 ride', energy:5, engagement:5, note:'Clear head, felt strong' },
+  { id:'g2', activity:'Invoice / admin', energy:2, engagement:2, note:'Draining — batch it' },
+];
+
+// Mind-map / brainstorm board
+export const SEED_MINDMAP = {
+  topic: 'Precision Medicine business',
+  branches: ['My genetics story = credibility', 'Who is the customer?', 'Partners: labs, clinics', 'Revenue model', 'A first small experiment'],
+};
 
 export const SEED_PEOPLE = {
   personal:[
