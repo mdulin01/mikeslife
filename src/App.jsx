@@ -163,16 +163,18 @@ function People({ people }) {
   );
 }
 
-function Calendar() {
+function Calendar({ data }) {
+  const live = !!(data.calendar && data.calendar.weekEvents);
+  const week = live ? data.calendar.weekEvents : WEEK_EVENTS;
   return (
     <section>
-      <div className="section-title">This week · your 3 Google calendars, color-coded by pillar <span className="dim">(preview)</span></div>
+      <div className="section-title">This week · your 3 Google calendars, color-coded by pillar <span className="dim">{live ? '(live)' : '(preview)'}</span></div>
       <div className="card">
         <div className="week">
           {WEEK_DAYS.map((d, i) => (
             <div className={'day' + (i === 4 ? ' today' : '')} key={i}>
               <div className="dh">{d}</div>
-              {(WEEK_EVENTS[i] || []).map((e, j) => e[1] === 'prop'
+              {(week[i] || []).map((e, j) => e[1] === 'prop'
                 ? <div className="ev prop" style={{ '--c': `var(${e[2]})` }} key={j}>{e[0]}</div>
                 : <div className="ev" style={{ background: `var(${e[1]})` }} key={j}>{e[0]}</div>)}
             </div>
@@ -211,12 +213,14 @@ function Calendar() {
   );
 }
 
-function Email() {
+function Email({ data }) {
+  const live = !!(data.emailSignals && data.emailSignals.length);
+  const mails = live ? data.emailSignals : MAILS;
   return (
     <section>
-      <div className="section-title">Email signals · only the lanes you've allow-listed, classified by pillar <span className="dim">(preview)</span></div>
+      <div className="section-title">Email signals · only the lanes you've allow-listed, classified by pillar <span className="dim">{live ? '(live)' : '(preview)'}</span></div>
       <div className="card">
-        {MAILS.map((m, i) => (
+        {mails.map((m, i) => (
           <div className="mail" key={i}>
             <span className="tag" style={{ background: 'rgba(148,163,184,.14)', color: `var(${m[1]})` }}>{m[0]}</span>
             <div><div className="mf">{m[2]}</div><div className="ms">{m[3]}</div>
@@ -354,8 +358,8 @@ export default function App() {
           {tab === 'checkin' && <CheckIn quote={quote} capVal={capVal} setCapVal={setCapVal} onSave={onSaveCheckin} />}
           {tab === 'today' && <Today capVal={capVal} />}
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
-          {tab === 'calendar' && <Calendar />}
-          {tab === 'email' && <Email />}
+          {tab === 'calendar' && <Calendar data={data} />}
+          {tab === 'email' && <Email data={data} />}
           {tab === 'planning' && (
             <PlanningHub
               data={data}

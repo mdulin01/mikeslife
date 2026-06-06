@@ -14,6 +14,9 @@ const initial = () => ({
   odyssey: SEED_ODYSSEY,
   goodTime: SEED_GOODTIME,
   mindmap: SEED_MINDMAP,
+  // Filled by the backend Google pipeline (Phase 2); falls back to previews when absent.
+  calendar: null,      // { weekEvents: { 0:[[title, '--color']|[title,'prop','--color'], ...], ... }, updatedAt }
+  emailSignals: null,  // [ [TAG, '--accent', from, subject, hintPrefix, actionText], ... ]
 });
 
 // Native LifeOS data. Persists to Firestore doc lifeos/{uid} when configured;
