@@ -15,15 +15,16 @@ const cfg = {
 export const FIREBASE_READY = Boolean(cfg.apiKey && cfg.projectId);
 export const OWNER_UID = import.meta.env.VITE_OWNER_UID || null;
 
+let app = null;
 let auth = null;
 let db = null;
 let provider = null;
 
 if (FIREBASE_READY) {
-  const app = initializeApp(cfg);
+  app = initializeApp(cfg);
   auth = getAuth(app);
   db = getFirestore(app);
   provider = new GoogleAuthProvider();
 }
 
-export { auth, db, provider };
+export { app, auth, db, provider };

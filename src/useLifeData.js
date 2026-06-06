@@ -113,10 +113,15 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, mindmap: { ...p.mindmap, branches: p.mindmap.branches.filter((_, i) => i !== idx) } }), ['mindmap']);
   }, [mutate]);
 
+  const setFcmToken = useCallback((token) => {
+    mutate((p) => ({ ...p, fcmToken: token, fcmUpdatedAt: new Date().toISOString() }), ['fcmToken', 'fcmUpdatedAt']);
+  }, [mutate]);
+
   return {
     data, loaded,
     resolveProposal, saveCheckin,
     activatePlan, setPlanStatus, toggleTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
+    setFcmToken,
   };
 }

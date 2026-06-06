@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { FIREBASE_READY, OWNER_UID, auth, provider } from './firebase';
 import { useLifeData } from './useLifeData';
+import { requestPushToken } from './messaging';
 import PlanningHub from './planning';
 import {
   PILLARS, COL, SDOT, PILLAR_LABEL, TODAY_POOL, QUOTES,
@@ -280,13 +281,22 @@ export default function App() {
   const [tab, setTab] = useState('checkin');
   const [pillar, setPillar] = useState(null);
   const [capVal, setCapVal] = useState(5);
+  const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
 
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
   const {
     data, resolveProposal, saveCheckin,
     activatePlan, setPlanStatus, toggleTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
+    setFcmToken,
   } = useLifeData(user);
+
+  const enableNotify = async () => {
+    setNotif('working');
+    const r = await requestPushToken();
+    if (r.ok) { setFcmToken(r.token); setNotif('granted'); }
+    else { setNotif('default'); console.warn('notifications:', r.reason); }
+  };
 
   useEffect(() => {
     if (!FIREBASE_READY) return;
@@ -350,6 +360,14 @@ export default function App() {
           </button>
         ))}
       </nav>
+
+      {FIREBASE_READY && notif !== 'granted' && notif !== 'unsupported' && (
+        <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 13 }}>🔔 <b>Turn on notifications</b> so Rupert can ping your phone for check-ins.
+            <span className="dim"> On iPhone, add this app to your Home Screen first, open it from there, then tap Enable.</span></div>
+          <button className="btn app" style={{ flex: '0 0 auto' }} onClick={enableNotify}>{notif === 'working' ? '…' : 'Enable'}</button>
+        </div>
+      )}
 
       {pillar ? (
         <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('today')} />
