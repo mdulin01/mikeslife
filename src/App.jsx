@@ -5,13 +5,14 @@ import { FIREBASE_READY, OWNER_UID, auth, provider } from './firebase';
 import { useLifeData } from './useLifeData';
 import { requestPushToken } from './messaging';
 import PlanningHub from './planning';
+import RupertChat from './rupert';
 import {
   PILLARS, COL, SDOT, PILLAR_LABEL, TODAY_POOL, QUOTES,
   WEEK_DAYS, WEEK_EVENTS, MAILS, CODING_UPDATES,
 } from './seed';
 
 const TABS = [
-  ['checkin', 'Check-in'], ['today', 'Today'], ['inbox', 'Inbox'],
+  ['checkin', 'Check-in'], ['today', 'Today'], ['rupert', 'Rupert'], ['inbox', 'Inbox'],
   ['planning', 'Planning'], ['calendar', 'Calendar'], ['email', 'Email'],
   ['people', 'People'], ['updates', 'Coding Updates'],
 ];
@@ -375,6 +376,7 @@ export default function App() {
         <>
           {tab === 'checkin' && <CheckIn quote={quote} capVal={capVal} setCapVal={setCapVal} onSave={onSaveCheckin} />}
           {tab === 'today' && <Today capVal={capVal} />}
+          {tab === 'rupert' && <RupertChat />}
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
           {tab === 'calendar' && <Calendar data={data} />}
           {tab === 'email' && <Email data={data} />}
