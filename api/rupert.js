@@ -60,6 +60,10 @@ function buildContext(d) {
   if (d.goodTime && d.goodTime.length) {
     lines.push('Recent energy log: ' + d.goodTime.slice(0, 4).map((g) => `${g.activity} (e${g.energy}/g${g.engagement})`).join(', '));
   }
+  // Real slices written by Rupert (on the mini) from the spoke apps.
+  if (d.fitnessContext) lines.push('Training (from mikesfitness, curated by Rupert):\n' + d.fitnessContext);
+  if (d.financeContext) lines.push('Finances (from mikes-money, curated by Rupert):\n' + d.financeContext);
+  if (d.healthContext) lines.push('Health (from mikeshealth):\n' + d.healthContext);
   return lines.join('\n');
 }
 
