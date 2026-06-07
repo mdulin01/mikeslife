@@ -7,7 +7,7 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:
   radial-gradient(1200px 600px at 50% -200px,rgba(45,212,191,.08),transparent),var(--bg);
   color:var(--txt);line-height:1.45;-webkit-font-smoothing:antialiased;min-height:100vh}
-.wrap{max-width:940px;margin:0 auto;padding:18px 16px 70px}
+.wrap{max-width:940px;margin:0 auto;padding:calc(22px + env(safe-area-inset-top)) 16px 70px}
 .muted{color:var(--mut)} .dim{color:var(--dim)}
 .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .row{display:flex;gap:10px;align-items:center}
@@ -185,8 +185,15 @@ textarea{min-height:88px;resize:vertical;line-height:1.5}
 .composer input{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:11px;color:var(--txt);padding:11px 13px;font-size:14px;font-family:inherit}
 
 /* Rupert — header icon launches a chat modal openable from anywhere */
-.rupertbtn{background:linear-gradient(135deg,var(--teal),var(--emerald));color:#04201c;border:none;border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;box-shadow:0 2px 10px rgba(45,212,191,.3)}
-.rupertbtn:hover{filter:brightness(1.08)}
+.rupertbtn{position:relative;background:radial-gradient(circle at 30% 30%,#22d3ee,#0e7490 70%);border:1px solid rgba(45,212,191,.5);border-radius:999px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;box-shadow:0 2px 12px rgba(34,211,238,.35)}
+.rupertbtn:hover{filter:brightness(1.1)}
+.rupertbtn .peacock{font-size:20px;line-height:1;display:inline-block;animation:peacock-idle 3.6s ease-in-out infinite}
+@keyframes peacock-idle{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+/* activation: peacock struts + a teal feather-ring blooms out */
+.rupertbtn.pop .peacock{animation:peacock-strut .85s cubic-bezier(.34,1.56,.64,1)}
+@keyframes peacock-strut{0%{transform:scale(1) rotate(0)}30%{transform:scale(1.5) rotate(-14deg)}60%{transform:scale(1.3) rotate(12deg)}100%{transform:scale(1) rotate(0)}}
+.rupertbtn .featherring{position:absolute;inset:-4px;border-radius:999px;border:2px solid var(--teal);animation:featherbloom .85s ease-out forwards;pointer-events:none}
+@keyframes featherbloom{0%{transform:scale(.7);opacity:.9}100%{transform:scale(2.4);opacity:0}}
 .modal-overlay{position:fixed;inset:0;background:rgba(4,8,16,.62);z-index:100;display:flex;align-items:flex-end;justify-content:center}
 .modal-rupert{background:var(--bg);border:1px solid var(--line);border-radius:18px 18px 0 0;width:100%;max-width:640px;max-height:88vh;overflow-y:auto;padding:16px 16px calc(16px + env(safe-area-inset-bottom));animation:sheetup .2s ease}
 @keyframes sheetup{from{transform:translateY(24px);opacity:.6}to{transform:translateY(0);opacity:1}}
@@ -210,3 +217,19 @@ textarea{min-height:88px;resize:vertical;line-height:1.5}
 /* clickable links inside Rupert's content (podcasts, recipes, travel) */
 .clink{color:var(--teal);text-decoration:none;font-weight:600;border-bottom:1px solid rgba(45,212,191,.4);white-space:nowrap}
 .clink:hover{filter:brightness(1.15)}
+
+/* Purpose · Learning hub */
+.learnhub .chiprow{display:flex;gap:6px;overflow-x:auto;margin:12px 0 6px;padding-bottom:4px}
+.learnhub .chipbtn{flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);color:var(--mut);font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.learnhub .chipbtn.on{background:var(--teal);color:#04201c;border-color:transparent}
+.learnlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.learnrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--txt);transition:.14s}
+.learnrow:hover{border-color:rgba(45,212,191,.45);transform:translateY(-1px)}
+.lr-main{min-width:0}
+.lr-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.lr-title{font-size:14px;font-weight:700}
+.lr-date{font-size:11px;color:var(--amber);font-weight:600}
+.lr-sub{font-size:12px;color:var(--mut);margin-top:2px}
+.lr-right{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.lr-go{color:var(--teal);font-weight:700}
+@media(max-width:560px){.lr-right .pill{display:none}}

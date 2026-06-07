@@ -1,6 +1,6 @@
 /* global __BUILD__ */
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Trash2, Sparkles, RefreshCw } from 'lucide-react';
+import { Trash2, RefreshCw } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { FIREBASE_READY, OWNER_UID, auth, provider } from './firebase';
 import { useLifeData } from './useLifeData';
@@ -8,6 +8,7 @@ import { requestPushToken } from './messaging';
 import PlanningHub from './planning';
 import RupertChat from './rupert';
 import MemoriesView from './memories';
+import PurposeLearning from './learning';
 import {
   PILLARS, COL, SDOT, PILLAR_LABEL, TODAY_POOL, QUOTES,
   WEEK_DAYS, WEEK_EVENTS, MAILS, CODING_UPDATES,
@@ -380,6 +381,7 @@ function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick }) {
         <div className="card"><h3>Plans in this area <span className="dim" style={{ fontWeight: 500, textTransform: 'none' }}>· tap one to start planning</span></h3>
           <div className="cgrid">{myplans.map((x) => <div key={x.id} onClick={() => onPlanClick(x)} style={{ cursor: 'pointer' }}><PlanCard p={x} /></div>)}</div></div>
       )}
+      {pk === 'purpose' && <PurposeLearning />}
     </section>
   );
 }
@@ -401,7 +403,11 @@ export default function App() {
   const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
   const [rupertOpen, setRupertOpen] = useState(false);
   const [rupertSeed, setRupertSeed] = useState('');
-  const openRupert = (s = '') => { setRupertSeed(s); setRupertOpen(true); };
+  const [peacockPop, setPeacockPop] = useState(false);
+  const openRupert = (s = '') => {
+    setRupertSeed(s); setRupertOpen(true);
+    setPeacockPop(true); setTimeout(() => setPeacockPop(false), 850);
+  };
 
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
   const {
@@ -484,7 +490,12 @@ export default function App() {
       <div className="apphead">
         <div className="row" style={{ gap: 10 }}>
           <div className="logo">Mike's <b>Life</b>{!FIREBASE_READY && <span className="demo-tag">DEMO</span>}</div>
-          {FIREBASE_READY && user && <button className="rupertbtn" title="Talk to Rupert" onClick={() => openRupert()}><Sparkles size={17} /></button>}
+          {FIREBASE_READY && user && (
+            <button className={'rupertbtn' + (peacockPop ? ' pop' : '')} title="Talk to Rupert" onClick={() => openRupert()}>
+              <span className="peacock" role="img" aria-label="Rupert">🦚</span>
+              {peacockPop && <span className="featherring" />}
+            </button>
+          )}
         </div>
         <div className="date">
           {easternDisplay(now).weekday}<br />
