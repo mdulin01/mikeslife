@@ -31,7 +31,15 @@ export function useLifeData(user) {
     const ref = doc(db, 'lifeos', user.uid);
     const unsub = onSnapshot(ref, (snap) => {
       if (snap.exists()) {
-        setData({ ...initial(), ...snap.data() });
+        const fresh = snap.data();
+        // Back-compat: plans seeded before the planning feature lack status/stages/type,
+        // so they'd be filtered out of every section (someday/active/done) → empty Plans tab.
+        if (Array.isArray(fresh.plans)) {
+          fresh.plans = fresh.plans.map((p) => ({
+            ...p, status: p.status || 'someday', stages: p.stages || [], type: p.type || 'generic',
+          }));
+        }
+        setData({ ...initial(), ...fresh });
       } else {
         setDoc(ref, initial()).catch(console.error);
         setData(initial());
@@ -114,13 +122,27 @@ export function useLifeData(user) {
   }, [mutate]);
 
   const setFcmToken = useCallback((token) => {
-    mutate((p) => ({ ...p, fcmToken: token, fcmUpdatedAt: new Date().toISOString() }), ['fcmToken', 'fcmUpdatedAt']);
+    // Store ALL devices' tokens (phone + desktop) so pushes reach every device,
+    // not just whichever one enabled notifications most recently.
+    mutate((p) => {
+      const fcmTokens = Array.from(new Set([...(p.fcmTokens || []), token])).slice(-5);
+      return { ...p, fcmToken: token, fcmTokens, fcmUpdatedAt: new Date().toISOString() };
+    }, ['fcmToken', 'fcmTokens', 'fcmUpdatedAt']);
+  }, [mutate]);
+
+  const addPlan = useCallback((title, pk = 'fun') => {
+    const t = (title || '').trim();
+    if (!t) return;
+    mutate((p) => ({
+      ...p,
+      plans: [{ id: 'p' + Date.now(), title: t, note: '', pk, type: 'generic', status: 'someday', stages: [] }, ...p.plans],
+    }), ['plans']);
   }, [mutate]);
 
   return {
     data, loaded,
     resolveProposal, saveCheckin,
-    activatePlan, setPlanStatus, toggleTask,
+    activatePlan, setPlanStatus, toggleTask, addPlan,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     setFcmToken,
   };

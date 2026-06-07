@@ -58,7 +58,10 @@ function PlanCard({ plan, activatePlan, setPlanStatus, toggleTask }) {
   );
 }
 
-function Plans({ data, activatePlan, setPlanStatus, toggleTask }) {
+function Plans({ data, activatePlan, setPlanStatus, toggleTask, addPlan }) {
+  const [title, setTitle] = useState('');
+  const [pk, setPk] = useState('fun');
+  const submit = () => { if (title.trim()) { addPlan(title, pk); setTitle(''); } };
   const active = data.plans.filter((p) => p.status === 'active');
   const someday = data.plans.filter((p) => p.status === 'someday');
   const done = data.plans.filter((p) => p.status === 'done');
@@ -70,10 +73,21 @@ function Plans({ data, activatePlan, setPlanStatus, toggleTask }) {
   );
   return (
     <section>
+      <div className="card">
+        <div className="subhead" style={{ marginTop: 0 }}>Add a plan</div>
+        <div className="addrow">
+          <select value={pk} onChange={(e) => setPk(e.target.value)} style={{ flex: '0 0 auto', background: 'var(--panel2)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--txt)', padding: '9px 10px' }}>
+            {Object.entries(PILLAR_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+          <input type="text" placeholder="New plan or someday idea…" value={title}
+            onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
+          <button className="btn app" onClick={submit}>Add</button>
+        </div>
+      </div>
       <Section label={`In motion (${active.length})`} items={active} />
       <Section label={`Someday (${someday.length})`} items={someday} />
       <Section label={`Done (${done.length})`} items={done} />
-      <p className="banner">Activate a someday plan and it breaks into stages of to-dos. Template-first; Rupert refines later.</p>
+      <p className="banner">Add an idea, then Activate it to break it into stages of to-dos. Template-first; Rupert refines later.</p>
     </section>
   );
 }

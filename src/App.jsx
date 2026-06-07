@@ -287,7 +287,7 @@ export default function App() {
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
   const {
     data, resolveProposal, saveCheckin,
-    activatePlan, setPlanStatus, toggleTask,
+    activatePlan, setPlanStatus, toggleTask, addPlan,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     setFcmToken,
   } = useLifeData(user);
@@ -386,6 +386,7 @@ export default function App() {
               activatePlan={activatePlan}
               setPlanStatus={setPlanStatus}
               toggleTask={toggleTask}
+              addPlan={addPlan}
               updateOdyssey={updateOdyssey}
               addGoodTime={addGoodTime}
               setMindTopic={setMindTopic}
