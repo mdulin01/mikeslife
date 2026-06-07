@@ -9,10 +9,12 @@ export default function RupertChat() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [speak, setSpeak] = useState(false);
-  const [listening, setListening] = useState(false);
-  const rec = useRef(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRec = useRef(null);
+  const chunks = useRef([]);
   const endRef = useRef(null);
-  const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const canRecord = typeof navigator !== 'undefined' && navigator.mediaDevices && typeof window !== 'undefined' && window.MediaRecorder;
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, busy]);
 
@@ -48,15 +50,40 @@ export default function RupertChat() {
     }
   };
 
-  const toggleMic = () => {
-    if (!SR) return;
-    if (listening) { rec.current?.stop(); setListening(false); return; }
-    const r = new SR();
-    r.lang = 'en-US'; r.interimResults = false; r.maxAlternatives = 1;
-    r.onresult = (e) => setInput((p) => (p ? p + ' ' : '') + e.results[0][0].transcript);
-    r.onend = () => setListening(false);
-    r.onerror = () => setListening(false);
-    rec.current = r; setListening(true); r.start();
+  const blobToB64 = (blob) => new Promise((resolve) => {
+    const r = new FileReader();
+    r.onloadend = () => resolve(String(r.result).split(',')[1]);
+    r.readAsDataURL(blob);
+  });
+
+  // Record audio → Whisper (works in the iOS PWA, unlike Web Speech).
+  const toggleMic = async () => {
+    if (transcribing) return;
+    if (recording) { mediaRec.current?.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunks.current = [];
+      mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        const blob = new Blob(chunks.current, { type: mr.mimeType || 'audio/webm' });
+        if (!blob.size) return;
+        setTranscribing(true);
+        try {
+          const audio = await blobToB64(blob);
+          const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
+          const r = await fetch('/api/transcribe', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken: token, audio, mime: mr.mimeType }),
+          });
+          const data = await r.json();
+          if (data.text) setInput((p) => (p ? p + ' ' : '') + data.text);
+        } catch { /* ignore */ } finally { setTranscribing(false); }
+      };
+      mediaRec.current = mr; setRecording(true); mr.start();
+    } catch { setRecording(false); }
   };
 
   return (
@@ -77,12 +104,14 @@ export default function RupertChat() {
       </div>
 
       <div className="composer">
-        {SR && (
-          <button className={'iconbtn' + (listening ? ' rec' : '')} title="Hold to dictate" onClick={toggleMic}><Mic size={18} /></button>
+        {canRecord && (
+          <button className={'iconbtn' + (recording ? ' rec' : '')} title={recording ? 'Stop' : 'Record'} onClick={toggleMic} disabled={transcribing}>
+            <Mic size={18} />
+          </button>
         )}
         <input
           type="text"
-          placeholder={SR ? 'Talk or type…' : 'Type (tap your keyboard mic to dictate)…'}
+          placeholder={transcribing ? 'Transcribing…' : recording ? 'Listening… tap mic to stop' : 'Talk or type…'}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
