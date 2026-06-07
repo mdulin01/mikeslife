@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Mic, Send, Volume2, VolumeX } from 'lucide-react';
+import { Mic, Send, Volume2, VolumeX, X } from 'lucide-react';
 import { auth } from './firebase';
 
 const GREETING = "Morning. Tell me your energy, mood, and what you want to get done today — or ask me anything (a workout, a grocery list, a plan).";
 
-export default function RupertChat() {
+export default function RupertChat({ seed, onClose }) {
   const [messages, setMessages] = useState([{ role: 'assistant', content: GREETING }]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -17,6 +17,7 @@ export default function RupertChat() {
   const canRecord = typeof navigator !== 'undefined' && navigator.mediaDevices && typeof window !== 'undefined' && window.MediaRecorder;
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, busy]);
+  useEffect(() => { if (seed) setInput(seed); }, [seed]);
 
   const say = (text) => {
     if (!speak || typeof speechSynthesis === 'undefined') return;
@@ -90,9 +91,12 @@ export default function RupertChat() {
     <section className="rupert">
       <div className="between" style={{ marginBottom: 10 }}>
         <div className="section-title" style={{ margin: 0 }}>Talk to Rupert</div>
-        <button className="iconbtn" title={speak ? 'Spoken replies on' : 'Spoken replies off'} onClick={() => setSpeak(!speak)}>
-          {speak ? <Volume2 size={18} /> : <VolumeX size={18} />}
-        </button>
+        <div className="row">
+          <button className="iconbtn" title={speak ? 'Spoken replies on' : 'Spoken replies off'} onClick={() => setSpeak(!speak)}>
+            {speak ? <Volume2 size={18} /> : <VolumeX size={18} />}
+          </button>
+          {onClose && <button className="iconbtn" title="Close" onClick={onClose}><X size={18} /></button>}
+        </div>
       </div>
 
       <div className="chat">

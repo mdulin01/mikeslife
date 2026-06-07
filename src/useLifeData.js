@@ -143,6 +143,24 @@ export function useLifeData(user) {
     }), ['plans']);
   }, [mutate]);
 
+  // Add a custom step to a plan (lands in a "More steps" stage).
+  const addTask = useCallback((planId, text) => {
+    const t = (text || '').trim();
+    if (!t) return;
+    mutate((p) => ({
+      ...p,
+      plans: p.plans.map((pl) => {
+        if (pl.id !== planId) return pl;
+        const stages = [...(pl.stages || [])];
+        const task = { id: 't' + Date.now(), text: t, done: false };
+        const i = stages.findIndex((s) => s.title === 'More steps');
+        if (i >= 0) stages[i] = { ...stages[i], tasks: [...stages[i].tasks, task] };
+        else stages.push({ id: 's_more_' + Date.now(), title: 'More steps', tasks: [task] });
+        return { ...pl, status: pl.status === 'someday' ? 'active' : pl.status, stages };
+      }),
+    }), ['plans']);
+  }, [mutate]);
+
   const addMemory = useCallback((text) => {
     const t = (text || '').trim();
     if (!t) return;
@@ -166,7 +184,7 @@ export function useLifeData(user) {
   return {
     data, loaded,
     resolveProposal, saveCheckin,
-    activatePlan, setPlanStatus, toggleTask, addPlan,
+    activatePlan, setPlanStatus, toggleTask, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     setFcmToken,

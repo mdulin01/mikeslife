@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Sparkles } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { FIREBASE_READY, OWNER_UID, auth, provider } from './firebase';
 import { useLifeData } from './useLifeData';
@@ -272,7 +272,7 @@ function CodingUpdates() {
   );
 }
 
-function PillarArea({ pk, proposals, plans, onResolve, onBack }) {
+function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick }) {
   const p = PILLARS[pk];
   const c = `var(${COL[pk]})`;
   const props = proposals.filter((x) => x.pk === pk);
@@ -290,7 +290,8 @@ function PillarArea({ pk, proposals, plans, onResolve, onBack }) {
         <div className="card"><h3>Needs your attention</h3>{props.map((x) => <Proposal key={x.id} p={x} onResolve={onResolve} />)}</div>
       )}
       {myplans.length > 0 && (
-        <div className="card"><h3>Plans in this area</h3><div className="cgrid">{myplans.map((x) => <PlanCard key={x.id} p={x} />)}</div></div>
+        <div className="card"><h3>Plans in this area <span className="dim" style={{ fontWeight: 500, textTransform: 'none' }}>· tap one to start planning</span></h3>
+          <div className="cgrid">{myplans.map((x) => <div key={x.id} onClick={() => onPlanClick(x)} style={{ cursor: 'pointer' }}><PlanCard p={x} /></div>)}</div></div>
       )}
     </section>
   );
@@ -311,11 +312,14 @@ export default function App() {
   const [pillar, setPillar] = useState(null);
   const [capVal, setCapVal] = useState(5);
   const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+  const [rupertOpen, setRupertOpen] = useState(false);
+  const [rupertSeed, setRupertSeed] = useState('');
+  const openRupert = (s = '') => { setRupertSeed(s); setRupertOpen(true); };
 
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
   const {
     data, resolveProposal, saveCheckin,
-    activatePlan, setPlanStatus, toggleTask, addPlan,
+    activatePlan, setPlanStatus, toggleTask, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     setFcmToken,
@@ -360,7 +364,10 @@ export default function App() {
   return (
     <div className="wrap">
       <div className="apphead">
-        <div className="logo">Mike's <b>Life</b>{!FIREBASE_READY && <span className="demo-tag">DEMO</span>}</div>
+        <div className="row" style={{ gap: 10 }}>
+          <div className="logo">Mike's <b>Life</b>{!FIREBASE_READY && <span className="demo-tag">DEMO</span>}</div>
+          {FIREBASE_READY && user && <button className="rupertbtn" title="Talk to Rupert" onClick={() => openRupert()}><Sparkles size={17} /></button>}
+        </div>
         <div className="date">
           {easternDisplay(now).weekday}<br />
           {easternDisplay(now).long}
@@ -403,14 +410,13 @@ export default function App() {
       )}
 
       {pillar ? (
-        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('home')} />
+        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('home')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
       ) : (
         <>
           {tab === 'home' && (
             <>
               <Today capVal={capVal} data={data} />
               <CheckIn quote={quote} capVal={capVal} setCapVal={setCapVal} onSave={onSaveCheckin} />
-              <RupertChat />
             </>
           )}
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
@@ -423,6 +429,8 @@ export default function App() {
               setPlanStatus={setPlanStatus}
               toggleTask={toggleTask}
               addPlan={addPlan}
+              addTask={addTask}
+              openRupert={openRupert}
               updateOdyssey={updateOdyssey}
               addGoodTime={addGoodTime}
               setMindTopic={setMindTopic}
@@ -436,6 +444,14 @@ export default function App() {
       )}
 
       <p className="banner" style={{ marginTop: 24 }}>Mike's Life · {FIREBASE_READY ? 'connected' : 'demo mode — add Firebase config to enable sign-in + saving'}</p>
+
+      {rupertOpen && (
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setRupertOpen(false); }}>
+          <div className="modal-rupert">
+            <RupertChat seed={rupertSeed} onClose={() => setRupertOpen(false)} />
+          </div>
+        </div>
+      )}
       </main>
       </div>
     </div>

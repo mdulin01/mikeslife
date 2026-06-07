@@ -9,15 +9,35 @@ function pillarPill(pk) {
 }
 
 // ───────────── Plans (activate → stages → to-dos) ─────────────
-function PlanCard({ plan, activatePlan, setPlanStatus, toggleTask }) {
-  const [hint, setHint] = useState(false);
+function Confetti() {
+  const colors = ['#2dd4bf', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#38bdf8'];
+  return (
+    <div className="confetti">
+      {Array.from({ length: 16 }).map((_, i) => (
+        <span key={i} style={{ left: `${(i / 16) * 100}%`, background: colors[i % colors.length], animationDelay: `${(i % 6) * 0.04}s` }} />
+      ))}
+    </div>
+  );
+}
+
+function PlanCard({ plan, activatePlan, setPlanStatus, toggleTask, addTask, openRupert }) {
+  const [step, setStep] = useState('');
+  const [boom, setBoom] = useState(false);
   const tasks = (plan.stages || []).flatMap((s) => s.tasks);
   const done = tasks.filter((t) => t.done).length;
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const c = `var(${COL[plan.pk]})`;
 
+  const submitStep = () => { if (step.trim()) { addTask(plan.id, step); setStep(''); } };
+  const askRupert = () => {
+    const open = tasks.filter((t) => !t.done).map((t) => t.text);
+    openRupert(`Help me schedule this plan: "${plan.title}". Open steps: ${open.join('; ') || '(none yet)'}. Ask about my availability and propose a realistic schedule.`);
+  };
+  const markDone = () => { setBoom(true); setTimeout(() => setBoom(false), 1400); setPlanStatus(plan.id, 'done'); };
+
   return (
     <div className="card" style={{ borderLeft: `3px solid ${c}` }}>
+      {boom && <Confetti />}
       <div className="planhead">
         <div><div className="nm">{plan.title}</div><div className="nt">{plan.note}</div></div>
         <div className="row" style={{ alignItems: 'center' }}>
@@ -30,35 +50,43 @@ function PlanCard({ plan, activatePlan, setPlanStatus, toggleTask }) {
         <button className="btn app" style={{ marginTop: 12 }} onClick={() => activatePlan(plan.id)}>Activate &amp; plan it →</button>
       )}
 
-      {plan.status !== 'someday' && tasks.length > 0 && (
+      {plan.status !== 'someday' && (
         <>
-          <div className="prog"><div style={{ width: `${pct}%` }} /></div>
-          <div className="dim" style={{ fontSize: 12 }}>{done} of {tasks.length} done</div>
-          {plan.stages.map((s) => (
-            <div className="stage" key={s.id}>
-              <div className="sh">{s.title}</div>
-              {s.tasks.map((t) => (
-                <div className={'task' + (t.done ? ' done' : '')} key={t.id} onClick={() => toggleTask(plan.id, s.id, t.id)}>
-                  <div className="box">{t.done ? '✓' : ''}</div>
-                  <div className="tt">{t.text}</div>
+          {tasks.length > 0 && (
+            <>
+              <div className="prog"><div style={{ width: `${pct}%` }} /></div>
+              <div className="dim" style={{ fontSize: 12 }}>{done} of {tasks.length} done</div>
+              {plan.stages.map((s) => (
+                <div className="stage" key={s.id}>
+                  <div className="sh">{s.title}</div>
+                  {s.tasks.map((t) => (
+                    <div className={'task' + (t.done ? ' done' : '')} key={t.id} onClick={() => toggleTask(plan.id, s.id, t.id)}>
+                      <div className="box">{t.done ? '✓' : ''}</div>
+                      <div className="tt">{t.text}</div>
+                    </div>
+                  ))}
                 </div>
               ))}
-            </div>
-          ))}
-          <div className="row" style={{ marginTop: 12, gap: 8 }}>
-            <button className="btn def" onClick={() => setHint(!hint)}>✨ Refine with Rupert</button>
+            </>
+          )}
+          <div className="addrow" style={{ marginTop: 10 }}>
+            <input type="text" placeholder="Add a step — what does done look like?" value={step}
+              onChange={(e) => setStep(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submitStep(); }} />
+            <button className="btn def" onClick={submitStep}>+ Step</button>
+          </div>
+          <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn def" onClick={askRupert}>✨ Ask Rupert to schedule</button>
             {plan.status === 'active'
-              ? <button className="btn app" onClick={() => setPlanStatus(plan.id, 'done')}>Mark done</button>
+              ? <button className="btn app" onClick={markDone}>Mark done 🎉</button>
               : <button className="btn def" onClick={() => setPlanStatus(plan.id, 'active')}>Reopen</button>}
           </div>
-          {hint && <p className="banner" style={{ textAlign: 'left', marginTop: 8 }}>Rupert isn’t wired into this app yet — once the snapshot bridge is connected he’ll add plan-specific steps here. For now the template steps are a starting point you can check off.</p>}
         </>
       )}
     </div>
   );
 }
 
-function Plans({ data, activatePlan, setPlanStatus, toggleTask, addPlan }) {
+function Plans({ data, activatePlan, setPlanStatus, toggleTask, addPlan, addTask, openRupert }) {
   const [title, setTitle] = useState('');
   const [pk, setPk] = useState('fun');
   const submit = () => { if (title.trim()) { addPlan(title, pk); setTitle(''); } };
@@ -68,7 +96,7 @@ function Plans({ data, activatePlan, setPlanStatus, toggleTask, addPlan }) {
   const Section = ({ label, items }) => items.length > 0 && (
     <>
       <div className="subhead" style={{ margin: '6px 0 8px' }}>{label}</div>
-      {items.map((p) => <PlanCard key={p.id} plan={p} activatePlan={activatePlan} setPlanStatus={setPlanStatus} toggleTask={toggleTask} />)}
+      {items.map((p) => <PlanCard key={p.id} plan={p} activatePlan={activatePlan} setPlanStatus={setPlanStatus} toggleTask={toggleTask} addTask={addTask} openRupert={openRupert} />)}
     </>
   );
   return (
