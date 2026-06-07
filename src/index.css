@@ -198,3 +198,15 @@ textarea{min-height:88px;resize:vertical;line-height:1.5}
 @keyframes cfall{0%{transform:translateY(-12px) rotate(0);opacity:1}100%{transform:translateY(105vh) rotate(560deg);opacity:0}}
 .task.done .box{animation:pop .28s ease}
 @keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.35)}100%{transform:scale(1)}}
+
+/* refresh bar + last-updated stamp (top of every page) */
+.refreshbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.refreshbar .upd{font-size:12px;color:var(--mut)}
+.refbtn{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;padding:7px 12px}
+.refbtn:disabled{opacity:.6;cursor:default}
+.refbtn .spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* clickable links inside Rupert's content (podcasts, recipes, travel) */
+.clink{color:var(--teal);text-decoration:none;font-weight:600;border-bottom:1px solid rgba(45,212,191,.4);white-space:nowrap}
+.clink:hover{filter:brightness(1.15)}

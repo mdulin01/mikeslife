@@ -161,6 +161,30 @@ export function useLifeData(user) {
     }), ['plans']);
   }, [mutate]);
 
+  // ── People: manual add / delete / bulk import (vCard) ──
+  const addPerson = useCallback((group, person) => {
+    const name = (person.name || '').trim();
+    if (!name) return;
+    mutate((p) => {
+      const list = (p.people && p.people[group]) || [];
+      return { ...p, people: { ...p.people, [group]: [{ id: 'pp' + Date.now(), name, meta: (person.meta || '').trim(), action: person.action || '' }, ...list] } };
+    }, ['people']);
+  }, [mutate]);
+
+  const deletePerson = useCallback((group, id) => {
+    mutate((p) => ({ ...p, people: { ...p.people, [group]: ((p.people && p.people[group]) || []).filter((x) => x.id !== id) } }), ['people']);
+  }, [mutate]);
+
+  const addPeople = useCallback((group, persons) => {
+    const clean = (persons || []).filter((x) => (x.name || '').trim());
+    if (!clean.length) return;
+    mutate((p) => {
+      const list = (p.people && p.people[group]) || [];
+      const add = clean.map((x, i) => ({ id: 'pp' + Date.now() + '_' + i, name: x.name.trim(), meta: (x.meta || '').trim(), action: '' }));
+      return { ...p, people: { ...p.people, [group]: [...add, ...list] } };
+    }, ['people']);
+  }, [mutate]);
+
   const addMemory = useCallback((text) => {
     const t = (text || '').trim();
     if (!t) return;
@@ -187,6 +211,7 @@ export function useLifeData(user) {
     activatePlan, setPlanStatus, toggleTask, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
+    addPerson, deletePerson, addPeople,
     setFcmToken,
   };
 }

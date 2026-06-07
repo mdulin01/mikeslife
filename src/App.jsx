@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Trash2, Sparkles } from 'lucide-react';
+/* global __BUILD__ */
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { Trash2, Sparkles, RefreshCw } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { FIREBASE_READY, OWNER_UID, auth, provider } from './firebase';
 import { useLifeData } from './useLifeData';
@@ -29,6 +30,25 @@ const easternDisplay = (dt = new Date()) => ({
   weekday: new Intl.DateTimeFormat('en-US', { timeZone: EASTERN, weekday: 'long' }).format(dt),
   long: new Intl.DateTimeFormat('en-US', { timeZone: EASTERN, month: 'long', day: 'numeric', year: 'numeric' }).format(dt),
 });
+const BUILD = (typeof __BUILD__ !== 'undefined') ? __BUILD__ : 'dev';
+
+// "Updated 4m ago" — relative time from an ISO string.
+const relTime = (iso) => {
+  if (!iso) return null;
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+};
+
+// Turn bare URLs in Rupert's text into clickable links (podcasts, recipes, travel).
+function Linkified({ text }) {
+  const parts = String(text || '').split(/(https?:\/\/[^\s)]+)/g);
+  return parts.map((s, i) => /^https?:\/\//.test(s)
+    ? <a key={i} href={s} target="_blank" rel="noopener noreferrer" className="clink">{s.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]} ↗</a>
+    : <span key={i}>{s}</span>);
+}
 
 // ───────────────────────── Login ─────────────────────────
 function Login({ onSignIn, error }) {
@@ -83,13 +103,14 @@ function Today({ capVal, data }) {
       {brief && (
         <div className="card" style={{ borderLeft: '3px solid var(--teal)', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}>
           <h3>☀️ Rupert's morning brief</h3>
-          {brief}
+          <Linkified text={brief} />
         </div>
       )}
       {data && data.contentFeed && data.contentFeed.text && (
         <div className="card" style={{ borderLeft: '3px solid var(--sky)', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}>
-          <h3>{data.contentFeed.title || 'From Rupert'}</h3>
-          {data.contentFeed.text}
+          <div className="between"><h3 style={{ margin: 0 }}>{data.contentFeed.title || 'From Rupert'}</h3>
+            {data.contentFeed.at && <span className="dim" style={{ fontSize: 11 }}>{relTime(data.contentFeed.at)}</span>}</div>
+          <div style={{ marginTop: 8 }}><Linkified text={data.contentFeed.text} /></div>
         </div>
       )}
       <div className="card">
@@ -166,22 +187,88 @@ function Plans({ plans }) {
   );
 }
 
-function PersonRow({ p }) {
+function PersonRow({ p, onDelete }) {
   return (
     <div className="person"><div><div className="pn">{p.name}</div><div className="pm">{p.meta}</div></div>
-      <span className="pa">{p.action}</span></div>
+      <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+        {p.action && <span className="pa">{p.action}</span>}
+        {onDelete && <button className="trash" title="Remove" onClick={() => onDelete(p.id)}><Trash2 size={15} /></button>}
+      </div></div>
   );
 }
 
-function People({ people }) {
+// Minimal vCard (.vcf) parser — pulls name + title/org + first email/phone.
+function parseVCards(text) {
+  const out = [];
+  for (const block of String(text).split(/END:VCARD/i)) {
+    if (!/BEGIN:VCARD/i.test(block)) continue;
+    const grab = (re) => { const m = block.match(re); return m ? m[1].trim() : ''; };
+    const name = grab(/\nFN[^:\n]*:(.+)/i);
+    if (!name) continue;
+    const title = grab(/\nTITLE[^:\n]*:(.+)/i);
+    const org = grab(/\nORG[^:\n]*:(.+)/i).replace(/;+$/, '').replace(/;/g, ' ');
+    const email = grab(/\nEMAIL[^:\n]*:(.+)/i);
+    const tel = grab(/\nTEL[^:\n]*:(.+)/i);
+    const role = [title, org].filter(Boolean).join(' · ');
+    const contact = [email, tel].filter(Boolean).join(' · ');
+    out.push({ name, meta: [role, contact].filter(Boolean).join(' — ') });
+  }
+  return out;
+}
+
+function AddPerson({ groups, defaultGroup, onAdd }) {
+  const [group, setGroup] = useState(defaultGroup);
+  const [name, setName] = useState('');
+  const [meta, setMeta] = useState('');
+  const submit = () => { if (name.trim()) { onAdd(group, { name, meta }); setName(''); setMeta(''); } };
+  return (
+    <div className="addrow" style={{ flexWrap: 'wrap', gap: 8 }}>
+      <select value={group} onChange={(e) => setGroup(e.target.value)} style={{ flex: '0 0 auto', background: 'var(--panel2)', border: '1px solid var(--line)', borderRadius: 10, color: 'var(--txt)', padding: '9px 10px' }}>
+        {groups.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+      </select>
+      <input type="text" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} style={{ flex: '1 1 130px' }} />
+      <input type="text" placeholder="Note (role, how you know them…)" value={meta} onChange={(e) => setMeta(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} style={{ flex: '2 1 180px' }} />
+      <button className="btn app" onClick={submit}>Add</button>
+    </div>
+  );
+}
+
+function People({ people, addPerson, deletePerson, addPeople }) {
+  const fileRef = useRef(null);
+  const [imported, setImported] = useState('');
+  const live = !!addPerson;
+  const GROUPS = [['personal', 'Personal'], ['professional', 'Professional'], ['opportunities', 'Opportunities']];
+
+  const onFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const text = await f.text();
+    const found = parseVCards(text);
+    if (found.length) { addPeople('professional', found); setImported(`Imported ${found.length} contact${found.length > 1 ? 's' : ''} → Professional.`); }
+    else setImported("Couldn't read any contacts from that file.");
+    e.target.value = '';
+  };
+
   return (
     <section>
-      <div className="card"><div className="subhead">Personal</div>{people.personal.map((p) => <PersonRow key={p.id} p={p} />)}</div>
-      <div className="card"><div className="subhead">Professional network</div>{people.professional.map((p) => <PersonRow key={p.id} p={p} />)}
+      {live && (
+        <div className="card">
+          <div className="subhead" style={{ marginTop: 0 }}>Add someone</div>
+          <AddPerson groups={GROUPS} defaultGroup="personal" onAdd={addPerson} />
+          <div className="row" style={{ marginTop: 12, alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <input ref={fileRef} type="file" accept=".vcf,text/vcard" style={{ display: 'none' }} onChange={onFile} />
+            <button className="btn def" onClick={() => fileRef.current?.click()}>📇 Import from iPhone Contacts (.vcf)</button>
+            {imported && <span className="dim" style={{ fontSize: 12 }}>{imported}</span>}
+          </div>
+          <p className="banner" style={{ marginTop: 10, textAlign: 'left' }}>iPhone: open Contacts → pick a person (or select multiple) → <b>Share Contact</b> → Save to Files / AirDrop the <code>.vcf</code>, then import it here. (Browsers can't read your phone's address book directly — this is the privacy-safe way in.)</p>
+        </div>
+      )}
+      <div className="card"><div className="subhead">Personal</div>{people.personal.map((p) => <PersonRow key={p.id} p={p} onDelete={live ? (id) => deletePerson('personal', id) : null} />)}</div>
+      <div className="card"><div className="subhead">Professional network</div>{people.professional.map((p) => <PersonRow key={p.id} p={p} onDelete={live ? (id) => deletePerson('professional', id) : null} />)}
         <div className="person"><div><div className="pn">+ from your email</div><div className="pm">Rupert surfaces contacts you've gone quiet on</div></div><span className="pa">review</span></div>
       </div>
       <div className="card"><div className="subhead">🎯 Job opportunities &amp; next gig <span className="dim" style={{ textTransform: 'none', fontWeight: 500 }}>· powered by mikedulinmd.app</span></div>
-        {people.opportunities.map((p) => <PersonRow key={p.id} p={p} />)}</div>
+        {people.opportunities.map((p) => <PersonRow key={p.id} p={p} onDelete={live ? (id) => deletePerson('opportunities', id) : null} />)}</div>
       <p className="banner">Relationships split into personal + professional. Rupert watches email for follow-ups, quiet contacts, and inbound opportunities.</p>
     </section>
   );
@@ -322,8 +409,39 @@ export default function App() {
     activatePlan, setPlanStatus, toggleTask, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
+    addPerson, deletePerson, addPeople,
     setFcmToken,
   } = useLifeData(user);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState('');
+  const touch = useRef({ y: 0, pulling: false });
+
+  const doRefresh = useCallback(async () => {
+    if (refreshing || !FIREBASE_READY || !auth?.currentUser) return;
+    setRefreshing(true); setRefreshMsg('');
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const r = await fetch('/api/refresh', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: token, view: pillar ? 'pillar' : tab, pk: pillar || null }),
+      });
+      const dd = await r.json();
+      if (!r.ok) setRefreshMsg(dd.message || "Couldn't refresh — try again.");
+      else setRefreshMsg(dd.addedProposals ? `Fresh content + ${dd.addedProposals} new idea${dd.addedProposals > 1 ? 's' : ''}.` : 'Fresh content from Rupert.');
+    } catch { setRefreshMsg('Network hiccup — try again.'); }
+    finally { setRefreshing(false); }
+  }, [refreshing, pillar, tab]);
+
+  // Mobile pull-to-refresh: a downward drag while scrolled to the top.
+  const onTouchStart = (e) => { touch.current = { y: e.touches[0].clientY, pulling: window.scrollY <= 2 }; };
+  const onTouchEnd = (e) => {
+    if (touch.current.pulling && window.scrollY <= 2) {
+      const dy = e.changedTouches[0].clientY - touch.current.y;
+      if (dy > 70) doRefresh();
+    }
+    touch.current.pulling = false;
+  };
 
   const enableNotify = async () => {
     setNotif('working');
@@ -399,7 +517,17 @@ export default function App() {
         ))}
       </nav>
 
-      <main className="content">
+      <main className="content" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+
+      {FIREBASE_READY && (
+        <div className="refreshbar">
+          <span className="upd">{data.refreshedAt ? `Updated ${relTime(data.refreshedAt)}` : 'Pull down or tap Refresh to update'}</span>
+          <button className="btn def refbtn" onClick={doRefresh} disabled={refreshing} title="Have Rupert pull fresh content + ideas">
+            <RefreshCw size={14} className={refreshing ? 'spin' : ''} /> {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+      )}
+      {refreshMsg && <div className="dim" style={{ fontSize: 12, margin: '-2px 2px 10px' }}>{refreshMsg}</div>}
 
       {FIREBASE_READY && notif !== 'granted' && notif !== 'unsupported' && (
         <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -438,12 +566,12 @@ export default function App() {
               removeMindBranch={removeMindBranch}
             />
           )}
-          {tab === 'people' && <People people={data.people} />}
+          {tab === 'people' && <People people={data.people} addPerson={addPerson} deletePerson={deletePerson} addPeople={addPeople} />}
           {tab === 'memories' && <MemoriesView data={data} addMemory={addMemory} deleteMemory={deleteMemory} addDocument={addDocument} deleteDocument={deleteDocument} />}
         </>
       )}
 
-      <p className="banner" style={{ marginTop: 24 }}>Mike's Life · {FIREBASE_READY ? 'connected' : 'demo mode — add Firebase config to enable sign-in + saving'}</p>
+      <p className="banner" style={{ marginTop: 24 }}>Mike's Life · {FIREBASE_READY ? 'connected' : 'demo mode — add Firebase config to enable sign-in + saving'} · <span className="dim">build {BUILD}</span></p>
 
       {rupertOpen && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setRupertOpen(false); }}>
