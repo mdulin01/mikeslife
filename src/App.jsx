@@ -6,6 +6,7 @@ import { useLifeData } from './useLifeData';
 import { requestPushToken } from './messaging';
 import PlanningHub from './planning';
 import RupertChat from './rupert';
+import MemoriesView from './memories';
 import {
   PILLARS, COL, SDOT, PILLAR_LABEL, TODAY_POOL, QUOTES,
   WEEK_DAYS, WEEK_EVENTS, MAILS, CODING_UPDATES,
@@ -14,12 +15,21 @@ import {
 const TABS = [
   ['checkin', 'Check-in'], ['today', 'Today'], ['rupert', 'Rupert'], ['inbox', 'Inbox'],
   ['planning', 'Planning'], ['calendar', 'Calendar'], ['email', 'Email'],
-  ['people', 'People'], ['updates', 'Coding Updates'],
+  ['people', 'People'], ['memories', 'Memories'], ['updates', 'Coding Updates'],
 ];
 
 const moodEmoji = (v) => { v = +v; return v <= 2 ? '😣' : v <= 4 ? '😐' : v <= 6 ? '🙂' : v <= 8 ? '😄' : '🤩'; };
 const capLevel = (v) => (v <= 3 ? 'low' : v <= 7 ? 'med' : 'high');
 const capLabel = (v) => (v <= 3 ? 'Low · rest' : v <= 7 ? 'Medium' : 'High · go');
+
+// Mike is US Eastern — NEVER use toISOString() for "today" (it's UTC; after ~8pm ET
+// that's already tomorrow). Always format/key dates in America/New_York.
+const EASTERN = 'America/New_York';
+const easternYMD = (dt = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: EASTERN, year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
+const easternDisplay = (dt = new Date()) => ({
+  weekday: new Intl.DateTimeFormat('en-US', { timeZone: EASTERN, weekday: 'long' }).format(dt),
+  long: new Intl.DateTimeFormat('en-US', { timeZone: EASTERN, month: 'long', day: 'numeric', year: 'numeric' }).format(dt),
+});
 
 // ───────────────────────── Login ─────────────────────────
 function Login({ onSignIn, error }) {
@@ -296,6 +306,7 @@ export default function App() {
     data, resolveProposal, saveCheckin,
     activatePlan, setPlanStatus, toggleTask, addPlan,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
+    addMemory, deleteMemory, addDocument, deleteDocument,
     setFcmToken,
   } = useLifeData(user);
 
@@ -333,15 +344,15 @@ export default function App() {
   const openPillar = (k) => { setPillar(k); };
   const goTab = (t) => { setPillar(null); setTab(t); };
 
-  const onSaveCheckin = (c) => { saveCheckin({ ...c, date: now.toISOString().slice(0, 10) }); goTab('today'); };
+  const onSaveCheckin = (c) => { saveCheckin({ ...c, date: easternYMD(now) }); goTab('today'); };
 
   return (
     <div className="wrap">
       <div className="apphead">
         <div className="logo">Mike's <b>Life</b>{!FIREBASE_READY && <span className="demo-tag">DEMO</span>}</div>
         <div className="date">
-          {now.toLocaleDateString('en-US', { weekday: 'long' })}<br />
-          {now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          {easternDisplay(now).weekday}<br />
+          {easternDisplay(now).long}
           {FIREBASE_READY && user && <div><button className="signout" onClick={() => signOut(auth)}>Sign out</button></div>}
         </div>
       </div>
@@ -402,6 +413,7 @@ export default function App() {
             />
           )}
           {tab === 'people' && <People people={data.people} />}
+          {tab === 'memories' && <MemoriesView data={data} addMemory={addMemory} deleteMemory={deleteMemory} addDocument={addDocument} deleteDocument={deleteDocument} />}
           {tab === 'updates' && <CodingUpdates />}
         </>
       )}

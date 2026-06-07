@@ -64,6 +64,8 @@ function buildContext(d) {
   if (d.fitnessContext) lines.push('Training (from mikesfitness, curated by Rupert):\n' + d.fitnessContext);
   if (d.financeContext) lines.push('Finances (from mikes-money, curated by Rupert):\n' + d.financeContext);
   if (d.healthContext) lines.push('Health (from mikeshealth):\n' + d.healthContext);
+  if (Array.isArray(d.memories) && d.memories.length) lines.push('Recent memories: ' + d.memories.slice(0, 5).map((m) => `${m.date || ''} ${m.text}`).join(' | '));
+  if (Array.isArray(d.documents) && d.documents.length) lines.push('Documents on file: ' + d.documents.map((x) => x.title).join(', '));
   return lines.join('\n');
 }
 

@@ -124,6 +124,14 @@ export const SEED_MINDMAP = {
   branches: ['My genetics story = credibility', 'Who is the customer?', 'Partners: labs, clinics', 'Revenue model', 'A first small experiment'],
 };
 
+// Personal memories + documents (your own — Rupert reads them as context).
+export const SEED_MEMORIES = [
+  { id: 'm1', date: '2026-05-24', text: 'Long greenway ride at dawn — felt strong, watched a heron the whole far stretch.' },
+];
+export const SEED_DOCUMENTS = [
+  { id: 'd1', title: 'Next-gig criteria (draft)', body: 'Remote-friendly. Mission in health / precision medicine. Fractional or advisory. Smart, kind team. Pays well enough to fund the life, not all of it.' },
+];
+
 export const SEED_PEOPLE = {
   personal:[
     { id:'adam', name:'❤️ Adam', meta:'46 days since your last shared memory', action:'plan a memory' },

@@ -3,8 +3,10 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   SEED_PROPOSALS, SEED_PLANS, SEED_PEOPLE,
-  SEED_ODYSSEY, SEED_GOODTIME, SEED_MINDMAP, stagesFromTemplate,
+  SEED_ODYSSEY, SEED_GOODTIME, SEED_MINDMAP, SEED_MEMORIES, SEED_DOCUMENTS, stagesFromTemplate,
 } from './seed';
+
+const ymdEastern = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
 const initial = () => ({
   proposals: SEED_PROPOSALS,
@@ -14,6 +16,8 @@ const initial = () => ({
   odyssey: SEED_ODYSSEY,
   goodTime: SEED_GOODTIME,
   mindmap: SEED_MINDMAP,
+  memories: SEED_MEMORIES,
+  documents: SEED_DOCUMENTS,
   // Filled by the backend Google pipeline (Phase 2); falls back to previews when absent.
   calendar: null,      // { weekEvents: { 0:[[title, '--color']|[title,'prop','--color'], ...], ... }, updatedAt }
   emailSignals: null,  // [ [TAG, '--accent', from, subject, hintPrefix, actionText], ... ]
@@ -139,11 +143,32 @@ export function useLifeData(user) {
     }), ['plans']);
   }, [mutate]);
 
+  const addMemory = useCallback((text) => {
+    const t = (text || '').trim();
+    if (!t) return;
+    mutate((p) => ({ ...p, memories: [{ id: 'm' + Date.now(), date: ymdEastern(), text: t }, ...(p.memories || [])] }), ['memories']);
+  }, [mutate]);
+
+  const deleteMemory = useCallback((id) => {
+    mutate((p) => ({ ...p, memories: (p.memories || []).filter((m) => m.id !== id) }), ['memories']);
+  }, [mutate]);
+
+  const addDocument = useCallback((title, body) => {
+    const tt = (title || '').trim();
+    if (!tt) return;
+    mutate((p) => ({ ...p, documents: [{ id: 'd' + Date.now(), title: tt, body: (body || '').trim() }, ...(p.documents || [])] }), ['documents']);
+  }, [mutate]);
+
+  const deleteDocument = useCallback((id) => {
+    mutate((p) => ({ ...p, documents: (p.documents || []).filter((x) => x.id !== id) }), ['documents']);
+  }, [mutate]);
+
   return {
     data, loaded,
     resolveProposal, saveCheckin,
     activatePlan, setPlanStatus, toggleTask, addPlan,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
+    addMemory, deleteMemory, addDocument, deleteDocument,
     setFcmToken,
   };
 }
