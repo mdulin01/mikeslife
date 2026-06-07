@@ -13,9 +13,8 @@ import {
 } from './seed';
 
 const TABS = [
-  ['checkin', 'Check-in'], ['today', 'Today'], ['rupert', 'Rupert'], ['inbox', 'Inbox'],
-  ['planning', 'Planning'], ['calendar', 'Calendar'], ['email', 'Email'],
-  ['people', 'People'], ['memories', 'Memories'],
+  ['home', 'Home'], ['inbox', 'Inbox'], ['planning', 'Planning'],
+  ['calendar', 'Calendar'], ['email', 'Email'], ['people', 'People'], ['memories', 'Memories'],
 ];
 
 const moodEmoji = (v) => { v = +v; return v <= 2 ? '😣' : v <= 4 ? '😐' : v <= 6 ? '🙂' : v <= 8 ? '😄' : '🤩'; };
@@ -303,12 +302,11 @@ export default function App() {
   const [authReady, setAuthReady] = useState(!FIREBASE_READY);
   const [authErr, setAuthErr] = useState('');
   const [tab, setTab] = useState(() => {
-    // A tapped push opens the app — land on Today (the morning brief + latest content),
-    // or honor an explicit ?view=<tab>.
+    // A tapped push lands on Home (brief + content live at the top of Home).
     try {
       const p = new URLSearchParams(window.location.search);
-      return p.get('view') || (p.get('source') === 'push' ? 'today' : 'checkin');
-    } catch { return 'checkin'; }
+      return p.get('view') || 'home';
+    } catch { return 'home'; }
   });
   const [pillar, setPillar] = useState(null);
   const [capVal, setCapVal] = useState(5);
@@ -357,7 +355,7 @@ export default function App() {
   const openPillar = (k) => { setPillar(k); };
   const goTab = (t) => { setPillar(null); setTab(t); };
 
-  const onSaveCheckin = (c) => { saveCheckin({ ...c, date: easternYMD(now) }); goTab('today'); };
+  const onSaveCheckin = (c) => { saveCheckin({ ...c, date: easternYMD(now) }); };
 
   return (
     <div className="wrap">
@@ -385,13 +383,16 @@ export default function App() {
         })}
       </div>
 
-      <nav>
+      <div className="layout">
+      <nav className="sidenav">
         {TABS.map(([id, label]) => (
           <button className={'tab' + (!pillar && tab === id ? ' active' : '')} key={id} onClick={() => goTab(id)}>
             {label}{id === 'inbox' ? <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{data.proposals.length}</span> : null}
           </button>
         ))}
       </nav>
+
+      <main className="content">
 
       {FIREBASE_READY && notif !== 'granted' && notif !== 'unsupported' && (
         <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -402,12 +403,16 @@ export default function App() {
       )}
 
       {pillar ? (
-        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('today')} />
+        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('home')} />
       ) : (
         <>
-          {tab === 'checkin' && <CheckIn quote={quote} capVal={capVal} setCapVal={setCapVal} onSave={onSaveCheckin} />}
-          {tab === 'today' && <Today capVal={capVal} data={data} />}
-          {tab === 'rupert' && <RupertChat />}
+          {tab === 'home' && (
+            <>
+              <Today capVal={capVal} data={data} />
+              <CheckIn quote={quote} capVal={capVal} setCapVal={setCapVal} onSave={onSaveCheckin} />
+              <RupertChat />
+            </>
+          )}
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
           {tab === 'calendar' && <Calendar data={data} />}
           {tab === 'email' && <Email data={data} />}
@@ -431,6 +436,8 @@ export default function App() {
       )}
 
       <p className="banner" style={{ marginTop: 24 }}>Mike's Life · {FIREBASE_READY ? 'connected' : 'demo mode — add Firebase config to enable sign-in + saving'}</p>
+      </main>
+      </div>
     </div>
   );
 }
