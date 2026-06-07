@@ -87,6 +87,12 @@ function Today({ capVal, data }) {
           {brief}
         </div>
       )}
+      {data && data.contentFeed && data.contentFeed.text && (
+        <div className="card" style={{ borderLeft: '3px solid var(--sky)', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}>
+          <h3>{data.contentFeed.title || 'From Rupert'}</h3>
+          {data.contentFeed.text}
+        </div>
+      )}
       <div className="card">
         <div className="between"><h3 style={{ margin: 0 }}>Today · tuned to your capacity</h3>
           <span className="pill" style={{ background: 'rgba(148,163,184,.15)', color: 'var(--mut)' }}>{capLabel(capVal)}</span></div>
@@ -296,7 +302,14 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(!FIREBASE_READY);
   const [authErr, setAuthErr] = useState('');
-  const [tab, setTab] = useState('checkin');
+  const [tab, setTab] = useState(() => {
+    // A tapped push opens the app — land on Today (the morning brief + latest content),
+    // or honor an explicit ?view=<tab>.
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('view') || (p.get('source') === 'push' ? 'today' : 'checkin');
+    } catch { return 'checkin'; }
+  });
   const [pillar, setPillar] = useState(null);
   const [capVal, setCapVal] = useState(5);
   const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
