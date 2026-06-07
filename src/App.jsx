@@ -66,10 +66,17 @@ function CheckIn({ quote, capVal, setCapVal, onSave }) {
   );
 }
 
-function Today({ capVal }) {
+function Today({ capVal, data }) {
   const n = capLevel(capVal) === 'high' ? 10 : capLevel(capVal) === 'med' ? 4 : 0;
+  const brief = data && data.todayBrief && data.todayBrief.text;
   return (
     <section>
+      {brief && (
+        <div className="card" style={{ borderLeft: '3px solid var(--teal)', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}>
+          <h3>☀️ Rupert's morning brief</h3>
+          {brief}
+        </div>
+      )}
       <div className="card">
         <div className="between"><h3 style={{ margin: 0 }}>Today · tuned to your capacity</h3>
           <span className="pill" style={{ background: 'rgba(148,163,184,.15)', color: 'var(--mut)' }}>{capLabel(capVal)}</span></div>
@@ -375,7 +382,7 @@ export default function App() {
       ) : (
         <>
           {tab === 'checkin' && <CheckIn quote={quote} capVal={capVal} setCapVal={setCapVal} onSave={onSaveCheckin} />}
-          {tab === 'today' && <Today capVal={capVal} />}
+          {tab === 'today' && <Today capVal={capVal} data={data} />}
           {tab === 'rupert' && <RupertChat />}
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
           {tab === 'calendar' && <Calendar data={data} />}
