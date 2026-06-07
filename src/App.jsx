@@ -15,7 +15,7 @@ import {
 const TABS = [
   ['checkin', 'Check-in'], ['today', 'Today'], ['rupert', 'Rupert'], ['inbox', 'Inbox'],
   ['planning', 'Planning'], ['calendar', 'Calendar'], ['email', 'Email'],
-  ['people', 'People'], ['memories', 'Memories'], ['updates', 'Coding Updates'],
+  ['people', 'People'], ['memories', 'Memories'],
 ];
 
 const moodEmoji = (v) => { v = +v; return v <= 2 ? '😣' : v <= 4 ? '😐' : v <= 6 ? '🙂' : v <= 8 ? '😄' : '🤩'; };
@@ -427,7 +427,6 @@ export default function App() {
           )}
           {tab === 'people' && <People people={data.people} />}
           {tab === 'memories' && <MemoriesView data={data} addMemory={addMemory} deleteMemory={deleteMemory} addDocument={addDocument} deleteDocument={deleteDocument} />}
-          {tab === 'updates' && <CodingUpdates />}
         </>
       )}
 
