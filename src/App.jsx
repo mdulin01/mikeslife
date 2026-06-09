@@ -386,6 +386,49 @@ function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick }) {
   );
 }
 
+// A tapped notification lands here — one focused screen about that one thing.
+function FocusView({ focus, data, openRupert, onOpenApp }) {
+  const brief = data && data.todayBrief && data.todayBrief.text;
+  const content = data && data.contentFeed;
+  const top = (data && data.proposals ? data.proposals : []).slice(0, 3);
+
+  if (focus === 'content' && content && content.text) {
+    return (
+      <section className="focusview">
+        <div className="card" style={{ borderLeft: '3px solid var(--sky)', whiteSpace: 'pre-wrap', fontSize: 15, lineHeight: 1.6 }}>
+          <h3>{content.title || 'From Rupert'}</h3>
+          <Linkified text={content.text} />
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn app" onClick={() => openRupert('Tell me more about what you just sent.')}>Ask Rupert</button>
+          <button className="btn def" onClick={onOpenApp}>Open the full app →</button>
+        </div>
+      </section>
+    );
+  }
+  // default focus = the morning brief + the top things waiting
+  return (
+    <section className="focusview">
+      <div className="card" style={{ borderLeft: '3px solid var(--teal)', whiteSpace: 'pre-wrap', fontSize: 15, lineHeight: 1.6 }}>
+        <h3>☀️ Rupert's brief</h3>
+        {brief ? <Linkified text={brief} /> : 'Open the app for today’s plan.'}
+      </div>
+      {top.length > 0 && (
+        <div className="card"><h3>Top for you right now</h3>
+          {top.map((p) => (
+            <div className="loop" key={p.id}><div className="dot" style={{ background: `var(${COL[p.pk] || '--teal'})` }} />
+              <div><div className="lt">{p.title}</div><div className="lm">{p.act || p.why}</div></div></div>
+          ))}
+        </div>
+      )}
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn app" onClick={() => openRupert()}>Talk to Rupert</button>
+        <button className="btn def" onClick={onOpenApp}>Open the full app →</button>
+      </div>
+    </section>
+  );
+}
+
 // ───────────────────────── App ─────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
@@ -416,8 +459,27 @@ export default function App() {
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
-    setFcmToken,
+    setLocation, setFcmToken,
   } = useLifeData(user);
+
+  // A tapped notification can deep-link to a focused view (?focus=brief|content)
+  // or open Rupert (?rupert=1). Pillars still come in via ?view=<pillar>.
+  const [focus, setFocus] = useState(() => { try { return new URLSearchParams(window.location.search).get('focus'); } catch { return null; } });
+  const [locMsg, setLocMsg] = useState('');
+
+  const captureLocation = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setLocMsg('Location not supported here'); return; }
+    setLocMsg('Locating…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({ lat: +pos.coords.latitude.toFixed(5), lng: +pos.coords.longitude.toFixed(5), accuracy: Math.round(pos.coords.accuracy), at: new Date().toISOString(), source: 'app' });
+        setLocMsg('📍 Shared with Rupert');
+        try { localStorage.setItem('rupertLoc', '1'); } catch { /* ignore */ }
+      },
+      () => setLocMsg('Location permission denied'),
+      { enableHighAccuracy: false, timeout: 9000, maximumAge: 300000 },
+    );
+  }, [setLocation]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState('');
@@ -471,6 +533,20 @@ export default function App() {
     });
   }, []);
 
+  // Deep-link: ?rupert=1 (or ?view=rupert) opens the chat from anywhere.
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('rupert') === '1' || p.get('view') === 'rupert') openRupert();
+    } catch { /* ignore */ }
+  }, []);
+
+  // If Mike previously shared location, refresh it quietly each time he opens the app.
+  useEffect(() => {
+    if (!user) return;
+    try { if (localStorage.getItem('rupertLoc') === '1') captureLocation(); } catch { /* ignore */ }
+  }, [user, captureLocation]);
+
   const signIn = () => signInWithPopup(auth, provider).catch((e) => setAuthErr(e.message));
 
   if (!authReady) return <div className="wrap"><p className="banner" style={{ marginTop: 40 }}>Loading…</p></div>;
@@ -488,15 +564,15 @@ export default function App() {
   return (
     <div className="wrap">
       <div className="apphead">
-        <div className="row" style={{ gap: 10 }}>
-          <div className="logo">Mike's <b>Life</b>{!FIREBASE_READY && <span className="demo-tag">DEMO</span>}</div>
-          {FIREBASE_READY && user && (
-            <button className={'rupertbtn' + (peacockPop ? ' pop' : '')} title="Talk to Rupert" onClick={() => openRupert()}>
+        <div className="logo">Mike's <b>Life</b>{!FIREBASE_READY && <span className="demo-tag">DEMO</span>}</div>
+        {FIREBASE_READY && user && (
+          <div className="rupert-center">
+            <button className={'rupertbtn big' + (peacockPop ? ' pop' : '')} title="Talk to Rupert" onClick={() => openRupert()}>
               <span className="peacock" role="img" aria-label="Rupert">🦚</span>
               {peacockPop && <span className="featherring" />}
             </button>
-          )}
-        </div>
+          </div>
+        )}
         <div className="date">
           {easternDisplay(now).weekday}<br />
           {easternDisplay(now).long}
@@ -548,13 +624,22 @@ export default function App() {
         </div>
       )}
 
-      {pillar ? (
+      {focus ? (
+        <FocusView focus={focus} data={data} openRupert={openRupert} onOpenApp={() => { setFocus(null); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
+      ) : pillar ? (
         <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('home')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
       ) : (
         <>
           {tab === 'home' && (
             <>
               <Today capVal={capVal} data={data} />
+              {FIREBASE_READY && (
+                <div className="locrow">
+                  <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>
+                  {locMsg && <span className="dim" style={{ fontSize: 12 }}>{locMsg}</span>}
+                  {!locMsg && data.location && <span className="dim" style={{ fontSize: 12 }}>last: {data.location.place || `${data.location.lat}, ${data.location.lng}`} · {relTime(data.location.at)}</span>}
+                </div>
+              )}
               <CheckIn quote={quote} capVal={capVal} setCapVal={setCapVal} onSave={onSaveCheckin} />
             </>
           )}

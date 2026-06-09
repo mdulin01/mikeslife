@@ -125,6 +125,10 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, mindmap: { ...p.mindmap, branches: p.mindmap.branches.filter((_, i) => i !== idx) } }), ['mindmap']);
   }, [mutate]);
 
+  const setLocation = useCallback((location) => {
+    mutate((p) => ({ ...p, location }), ['location']);
+  }, [mutate]);
+
   const setFcmToken = useCallback((token) => {
     // Store ALL devices' tokens (phone + desktop) so pushes reach every device,
     // not just whichever one enabled notifications most recently.
@@ -212,6 +216,6 @@ export function useLifeData(user) {
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
-    setFcmToken,
+    setLocation, setFcmToken,
   };
 }
