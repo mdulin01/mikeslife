@@ -1,8 +1,11 @@
-// Vercel Cron: the daily content push (podcasts / recipes / meal-prep / travel) —
-// cloud version of rupert/notify/content-push.mjs so it runs without the mini.
-// One run per day; the slot comes from the day of week (ET):
+// Vercel Cron: the daily content push (podcasts / recipes / meal-prep / travel).
+// One run per day; slot = day of week (ET):
 //   Mon/Tue → recipe · Wed/Thu → podcast · Fri → (skip) · Sat → travel · Sun → mealprep
-// Idempotent: skips if today already has an alert of that slot type.
+//
+// Output is STRUCTURED: alert.items = [{ t, s, link, feedback }] so the app can
+// rate each item separately. Podcasts are REAL recent episodes — pulled from the
+// shows' RSS feeds (last 60 days) and picked by the model, with real episode links.
+// Idempotent per day · respects lifeos.alertPrefs mutes.
 // Required env: CRON_SECRET, OPENAI_API_KEY, FIREBASE_SERVICE_ACCOUNT
 
 import OpenAI from 'openai';
@@ -22,8 +25,60 @@ function slotForToday() {
   return { Mon: 'recipe', Tue: 'recipe', Wed: 'podcast', Thu: 'podcast', Fri: null, Sat: 'travel', Sun: 'mealprep' }[day] ?? null;
 }
 
-const LINK_RULE = ' For each item, add the link on its own line: podcasts → "Listen: https://open.spotify.com/search/" + show and episode words joined by %20; recipes/travel → "https://www.google.com/search?q=" + the words joined by +. In search words use ONLY letters, numbers and spaces — no apostrophes, quotes, colons, ampersands or other punctuation — and never put any character (period, comma, paren) immediately after a URL. Phone-friendly, no preamble.';
 const TITLES = { podcast: '🎧 Podcasts for your commute', recipe: "🍳 Tonight's dinner ideas", mealprep: '🥗 Sunday meal-prep', travel: '✈️ Travel ideas' };
+
+// ── Real recent podcast episodes via iTunes lookup + RSS (no fabricated "recent" eps) ──
+const SHOWS = [
+  'The Peter Attia Drive', 'Huberman Lab', 'Hard Fork', 'The AI Daily Brief',
+  'FoundMyFitness', 'NEJM AI Grand Rounds', 'Volts', 'Freakonomics Radio',
+];
+
+async function fetchText(url, ms = 6000) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctl.signal, headers: { 'user-agent': 'mikeslife-rupert/1.0' } });
+    return r.ok ? await r.text() : null;
+  } catch { return null; } finally { clearTimeout(t); }
+}
+
+const tag = (xml, name) => {
+  const m = xml.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`, 'i'));
+  return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim() : '';
+};
+
+async function recentEpisodes(show, days = 60) {
+  const search = await fetchText(`https://itunes.apple.com/search?term=${encodeURIComponent(show)}&media=podcast&limit=1`);
+  if (!search) return [];
+  let feedUrl;
+  try { feedUrl = JSON.parse(search).results?.[0]?.feedUrl; } catch { return []; }
+  if (!feedUrl) return [];
+  const xml = await fetchText(feedUrl);
+  if (!xml) return [];
+  const cutoff = Date.now() - days * 86400 * 1000;
+  const out = [];
+  for (const item of xml.split(/<item[\s>]/i).slice(1, 7)) {
+    const title = tag(item, 'title');
+    const pub = new Date(tag(item, 'pubDate') || 0).getTime();
+    if (!title || !pub || pub < cutoff) continue;
+    const link = tag(item, 'link') || (item.match(/enclosure[^>]*url="([^"]+)"/i) || [])[1] || '';
+    out.push({ show, title, date: new Date(pub).toISOString().slice(0, 10), link, desc: tag(item, 'description').slice(0, 180) });
+  }
+  return out;
+}
+
+// Render items[] to plain text (push body + legacy text field).
+const renderItems = (items) => items.map((it) => `${it.t}${it.s ? '\n' + it.s : ''}${it.link ? '\n' + it.link : ''}`).join('\n\n');
+
+// Per-item + whole-alert ratings, flattened for the prompt.
+function feedbackLines(d) {
+  const lines = [];
+  for (const a of (d.alerts || []).slice(0, 40)) {
+    if (a.feedback) lines.push(`${a.feedback === 'up' ? '👍' : '👎'} ${a.title}`);
+    for (const it of (a.items || [])) if (it.feedback) lines.push(`${it.feedback === 'up' ? '👍' : '👎'} ${it.t}`);
+  }
+  return lines.slice(0, 16);
+}
 
 export default async function handler(req, res) {
   if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -45,36 +100,66 @@ export default async function handler(req, res) {
     if (d.alertPrefs && d.alertPrefs[slot] === false) {
       return res.status(200).json({ ok: true, skipped: `${slot} muted in app preferences` });
     }
-
-    // Idempotency — the mini may have already sent this slot today.
     const dupe = (d.alerts || []).some((a) => a.type === slot && a.at && easternYMD(new Date(a.at)) === today);
     if (dupe) return res.status(200).json({ ok: true, skipped: `${slot} already sent today` });
 
-    const PROMPTS = {
-      podcast: 'Recommend 2–3 specific podcast episodes — mix AI and health/longevity — that Mike would enjoy on a ~2-hour commute. Give show + episode title + a one-line why. He likes AI, precision medicine, fitness, and longevity.',
-      recipe: 'Suggest 2 dinner recipes Mike could cook tonight — healthy, high-protein, not fussy. Each: name + 4–6 key ingredients + a one-line method.',
-      mealprep: 'Give Mike a simple Sunday meal-prep plan: 2–3 batch recipes (high-protein, healthy) plus a combined grocery list, for weekday lunches/dinners.',
-      travel: 'Suggest 2–3 inspiring travel ideas for Mike (loves hiking, biking, warm places; has a January birthday trip and a "month in Spain" goal). Keep it short.'
-        + (Array.isArray(d.emailSignals) && d.emailSignals.length ? ' Also weave in anything relevant from his inbox: ' + JSON.stringify(d.emailSignals).slice(0, 800) : ''),
-    };
-    const fb = (d.alerts || []).filter((a) => a.feedback).slice(0, 12);
-    const FB_LINE = fb.length ? '\n\nMike rated past content (send more like 👍, avoid more like 👎): ' + fb.map((a) => `${a.feedback === 'up' ? '👍' : '👎'} ${a.title}: ${String(a.text || '').slice(0, 60)}`).join(' | ') : '';
+    const fb = feedbackLines(d);
+    const FB_LINE = fb.length ? `\n\nMike's ratings of past items (more like 👍, avoid like 👎): ${fb.join(' | ')}` : '';
+    const DATE_LINE = `Today is ${today}.`;
+    const JSON_RULE = ' Respond with ONLY a JSON array (no prose, no code fence) of 2-3 objects: {"t": short title, "s": one-line description/why (for recipes include key ingredients), "link": a URL}. For links: recipes/travel → "https://www.google.com/search?q=" + words joined by + (letters/numbers only).';
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}) });
-    const c = await openai.chat.completions.create({
-      model: MODEL,
-      messages: [
-        { role: 'system', content: "You are Rupert, Mike's chief of staff. Be concise, specific, warm. Output a short phone-friendly message, no preamble." },
-        { role: 'user', content: PROMPTS[slot] + LINK_RULE + FB_LINE },
-      ],
-    });
-    const body = (c.choices?.[0]?.message?.content || '').trim();
-    const at = new Date().toISOString();
+    let items = null;
 
+    if (slot === 'podcast') {
+      // Real episodes from RSS — recent by construction, links are the episodes'.
+      const all = (await Promise.all(SHOWS.map((s) => recentEpisodes(s)))).flat();
+      if (all.length) {
+        const pick = await openai.chat.completions.create({
+          model: MODEL,
+          messages: [
+            { role: 'system', content: "You are Rupert, Mike's chief of staff. He likes AI, precision medicine, fitness, longevity, renewables/EVs." },
+            { role: 'user', content: `${DATE_LINE} From these REAL recent episodes, pick the 3 best for Mike's ~2-hour commute (diverse mix). Respond with ONLY a JSON array: {"i": index, "why": one line}.${FB_LINE}\n\n${all.map((e, i) => `${i}: [${e.show}] ${e.title} (${e.date}) — ${e.desc}`).join('\n')}` },
+          ],
+        });
+        try {
+          const arr = JSON.parse((pick.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
+          items = (Array.isArray(arr) ? arr : []).slice(0, 3)
+            .filter((x) => all[x.i])
+            .map((x) => ({ t: `${all[x.i].show} — ${all[x.i].title}`, s: `${all[x.i].date} · ${x.why || ''}`, link: all[x.i].link, feedback: null }));
+        } catch { /* fall through to generic path */ }
+      }
+    }
+
+    if (!items || !items.length) {
+      const PROMPTS = {
+        podcast: 'Recommend 2-3 podcast episodes — mix AI and health/longevity — for a ~2-hour commute. Use Spotify search links: "https://open.spotify.com/search/" + words joined by %20 (letters/numbers/spaces only).',
+        recipe: 'Suggest 2 dinner recipes Mike could cook tonight — healthy, high-protein, not fussy, seasonal for the current month.',
+        mealprep: 'A simple Sunday meal-prep plan: 2-3 batch recipes (high-protein, healthy). Put the combined grocery list in the last item\'s "s".',
+        travel: 'Suggest 2-3 inspiring travel ideas (hiking, biking, warm places; January birthday trip and a "month in Spain" goal pending) — seasonal for the current month.'
+          + (Array.isArray(d.emailSignals) && d.emailSignals.length ? ' Inbox signals: ' + JSON.stringify(d.emailSignals).slice(0, 600) : ''),
+      };
+      const c = await openai.chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: "You are Rupert, Mike's chief of staff. Concise, specific, warm." },
+          { role: 'user', content: DATE_LINE + ' ' + PROMPTS[slot] + JSON_RULE + FB_LINE },
+        ],
+      });
+      try {
+        const arr = JSON.parse((c.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim());
+        items = (Array.isArray(arr) ? arr : []).slice(0, 4).filter((x) => x && x.t)
+          .map((x) => ({ t: String(x.t).slice(0, 90), s: String(x.s || '').slice(0, 200), link: x.link || null, feedback: null }));
+      } catch { items = null; }
+    }
+    if (!items || !items.length) return res.status(500).json({ error: 'no items generated' });
+
+    const text = renderItems(items);
+    const at = new Date().toISOString();
     await ref.set({
-      contentFeed: { slot, title: TITLES[slot], text: body, at },
+      contentFeed: { slot, title: TITLES[slot], text, at },
       alerts: [
-        { id: 'a' + Date.now(), type: slot, title: TITLES[slot], text: body, at, feedback: null },
+        { id: 'a' + Date.now(), type: slot, title: TITLES[slot], text, items, at, feedback: null },
         ...(d.alerts || []),
       ].slice(0, 120),
     }, { merge: true });
@@ -85,14 +170,14 @@ export default async function handler(req, res) {
       try {
         await getMessaging().send({
           token,
-          notification: { title: TITLES[slot], body: body.slice(0, 180) },
+          notification: { title: TITLES[slot], body: items.map((it) => it.t).join(' · ').slice(0, 180) },
           data: { url: LINK },
           webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
         });
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }
-    return res.status(200).json({ ok: true, slot, pushed });
+    return res.status(200).json({ ok: true, slot, pushed, items: items.length });
   } catch (e) {
     console.error('cron-content error', e);
     return res.status(500).json({ error: e.message || 'error' });

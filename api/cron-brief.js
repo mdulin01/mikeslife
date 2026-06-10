@@ -92,8 +92,12 @@ export default async function handler(req, res) {
     if (d.financeContext) ctx.push('Finances:\n' + d.financeContext);
     if (d.healthContext) ctx.push('Health:\n' + d.healthContext);
     if (d.location && (d.location.place || d.location.lat)) ctx.push(`Location: ${d.location.place || `${d.location.lat}, ${d.location.lng}`}`);
-    const fb = (d.alerts || []).filter((a) => a.feedback).slice(0, 10);
-    if (fb.length) ctx.push('His ratings of past content (more like 👍, less like 👎): ' + fb.map((a) => `${a.feedback === 'up' ? '👍' : '👎'} ${a.title}`).join('; '));
+    const fb = [];
+    for (const a of (d.alerts || []).slice(0, 40)) {
+      if (a.feedback) fb.push(`${a.feedback === 'up' ? '👍' : '👎'} ${a.title}`);
+      for (const it of (a.items || [])) if (it.feedback) fb.push(`${it.feedback === 'up' ? '👍' : '👎'} ${it.t}`);
+    }
+    if (fb.length) ctx.push('His ratings of past content (more like 👍, less like 👎): ' + fb.slice(0, 16).join('; '));
 
     const isSunday = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date()) === 'Sun';
 
@@ -134,7 +138,7 @@ Rules: keep every line short. Draw the 3 focus items from today's list and activ
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}) });
     const completion = await openai.chat.completions.create({
       model: MODEL,
-      messages: [{ role: 'system', content: SYS }, { role: 'user', content: 'Context:\n' + (ctx.join('\n\n') || 'No data yet.') }],
+      messages: [{ role: 'system', content: `Today is ${today}. ` + SYS }, { role: 'user', content: 'Context:\n' + (ctx.join('\n\n') || 'No data yet.') }],
     });
     const brief = (completion.choices?.[0]?.message?.content || '').trim();
     const at = new Date().toISOString();
@@ -145,6 +149,15 @@ Rules: keep every line short. Draw the 3 focus items from today's list and activ
       ...(d.alerts || []),
     ].slice(0, 120);
     await ref.set(patch, { merge: true });
+
+    // Nightly backup of the whole lifeos doc (everything lives in it now); prune >14d.
+    try {
+      await db.doc(`lifeos_backups/${today}`).set({ ...d, ...patch, backedUpAt: at });
+      const old = await db.collection('lifeos_backups').get();
+      for (const doc of old.docs) {
+        if (doc.id < easternYMD(new Date(Date.now() - 14 * 86400 * 1000))) await doc.ref.delete();
+      }
+    } catch (e) { console.error('backup failed:', e.message); }
 
     const firstLine = brief.split('\n')[0] || 'Your morning brief';
     const tokens = Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));

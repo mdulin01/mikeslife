@@ -1,6 +1,16 @@
 {
   "crons": [
-    { "path": "/api/cron-brief", "schedule": "15 11 * * *" },
-    { "path": "/api/cron-content", "schedule": "0 20 * * *" }
+    {
+      "path": "/api/cron-brief",
+      "schedule": "15 11 * * *"
+    },
+    {
+      "path": "/api/cron-content",
+      "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron-celebrate",
+      "schedule": "0 1 * * *"
+    }
   ]
 }

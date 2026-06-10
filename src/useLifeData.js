@@ -29,7 +29,7 @@ const initial = () => ({
   todayItems: [],      // [{ id, title, why, pk, planId?, status: 'pending'|'done'|'delayed', until: null|'YYYY-MM-DD' }]
   todayItemsDate: null,
   // Per-type alert mutes — producers (crons + mini scripts) skip muted types.
-  alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true },
+  alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true },
 });
 
 // Native LifeOS data. Persists to Firestore doc lifeos/{uid} when configured;
@@ -242,7 +242,19 @@ export function useLifeData(user) {
   }, [mutate]);
 
   const setAlertPref = useCallback((type, on) => {
-    mutate((p) => ({ ...p, alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, ...(p.alertPrefs || {}), [type]: on } }), ['alertPrefs']);
+    mutate((p) => ({ ...p, alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ...(p.alertPrefs || {}), [type]: on } }), ['alertPrefs']);
+  }, [mutate]);
+
+  // Per-item 👍/👎 inside a content alert. `items` is the rendered list (covers
+  // legacy text alerts — first rating materializes the items array onto the alert).
+  const setAlertItemFeedback = useCallback((alertId, items, idx, fb) => {
+    mutate((p) => ({
+      ...p,
+      alerts: (p.alerts || []).map((a) => a.id !== alertId ? a : {
+        ...a,
+        items: items.map((it, i) => i === idx ? { ...it, feedback: it.feedback === fb ? null : fb } : it),
+      }),
+    }), ['alerts']);
   }, [mutate]);
 
   const delayTodayItem = useCallback((id, days) => {
@@ -276,6 +288,6 @@ export function useLifeData(user) {
     setLocation, setFcmToken,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
-    setAlertPref,
+    setAlertPref, setAlertItemFeedback,
   };
 }

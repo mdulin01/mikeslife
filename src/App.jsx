@@ -77,9 +77,40 @@ const ALERT_TYPES = [
   ['recipe', 'Recipes', '🍳'],
   ['mealprep', 'Meal-prep', '🥗'],
   ['travel', 'Travel', '✈️'],
+  ['fitness', 'Fitness', '💪'],
+  ['finance', 'Finance', '💰'],
+  ['health', 'Health', '🫀'],
+  ['rental', 'Rentals', '🏠'],
+  ['celebrate', 'Wins', '🎉'],
 ];
-const ALERT_EMOJI = { brief: '☀️', podcast: '🎧', recipe: '🍳', mealprep: '🥗', travel: '✈️' };
+const ALERT_EMOJI = { brief: '☀️', podcast: '🎧', recipe: '🍳', mealprep: '🥗', travel: '✈️', fitness: '💪', finance: '💰', health: '🫀', rental: '🏠', celebrate: '🎉' };
+// Spoke-app deep links — alerts about an area link back to the app that owns it.
+const APP_LINKS = {
+  fitness: ['mikesfitness', 'https://mikesfitness.app'],
+  finance: ['mikes-money', 'https://www.mikesmoney.app'],
+  health: ['mikeshealth', 'https://mikeshealth.app'],
+  rental: ['rainbow rentals', 'https://rainbowrentals.app'],
+  celebrate: ['mikesfitness', 'https://mikesfitness.app'],
+};
 const RECENT_DAYS = 5;
+
+// Structured items inside a content alert (one per podcast/recipe/idea).
+// New alerts carry items[] from the cron; legacy text alerts get split heuristically.
+function alertItems(a) {
+  if (Array.isArray(a.items) && a.items.length) return a.items;
+  if (a.type === 'brief' || a.type === 'celebrate') return null;
+  const chunks = String(a.text || '').split(/\n\s*\n/).map((c) => c.trim()).filter(Boolean);
+  if (chunks.length < 2 || chunks.length > 6) return null;
+  return chunks.map((c) => {
+    const lines = c.split('\n').map((l) => l.trim());
+    const link = (c.match(/https?:\/\/[^\s)]+/) || [null])[0];
+    return {
+      t: lines[0].replace(/^[-•*\d.)\s]+/, '').slice(0, 90),
+      s: lines.slice(1).filter((l) => l && !/^https?:\/\//.test(l) && !/^Listen:/i.test(l)).join(' '),
+      link, feedback: null,
+    };
+  });
+}
 
 const alertSnippet = (a) => {
   const line = String(a.text || '').split('\n').map((s) => s.trim()).filter((s) => s && !/^https?:\/\//.test(s) && !/^Listen:/i.test(s))
@@ -222,42 +253,59 @@ function SearchView({ data, onBack, onOpenAlert, goTab }) {
   );
 }
 
-// One alert, full screen: read, follow links, rate it, act on it, delete it.
-const ALERT_PILLAR = { recipe: 'health', mealprep: 'health', podcast: 'purpose', travel: 'fun', brief: 'purpose' };
+// One alert, full screen: read, follow links, rate it (per item!), act on it.
+const ALERT_PILLAR = { recipe: 'health', mealprep: 'health', podcast: 'purpose', travel: 'fun', brief: 'purpose', fitness: 'health', finance: 'fin', health: 'health', rental: 'fin', celebrate: 'health' };
 
-function AlertDetail({ alert: a, onBack, onFeedback, onDelete, openRupert, addTodayItem, addPlan }) {
+function AlertDetail({ alert: a, onBack, onFeedback, onItemFeedback, onDelete, openRupert, addTodayItem, addPlan }) {
   const [actMsg, setActMsg] = useState('');
   if (!a) return null;
   const pk = ALERT_PILLAR[a.type] || 'fun';
-  const fbBtn = (fb, em, label) => (
-    <button className="btn def" onClick={() => onFeedback(a.id, fb)}
-      style={a.feedback === fb ? { background: 'var(--teal)', color: '#04201c', borderColor: 'var(--teal)' } : {}}>
-      {em} {label}
-    </button>
+  const items = alertItems(a);
+  const app = APP_LINKS[a.type];
+  const fbBtn = (cur, on, fb, em) => (
+    <button className="btn def" style={{ padding: '4px 9px', fontSize: 12, ...(cur === fb ? { background: 'var(--teal)', color: '#04201c', borderColor: 'var(--teal)' } : {}) }} onClick={on}>{em}</button>
   );
   const actLabel = { recipe: 'Cook tonight', mealprep: 'Do the meal-prep', podcast: 'Listen on the commute', travel: 'Look into this trip' }[a.type] || (a.title || a.type);
   return (
     <section className="focusview">
       <button className="backbtn" onClick={onBack}>‹ back</button>
-      <div className="card" style={{ borderLeft: '3px solid var(--sky)', whiteSpace: 'pre-wrap', fontSize: 15, lineHeight: 1.6 }}>
+      <div className="card" style={{ borderLeft: '3px solid var(--sky)', fontSize: 15, lineHeight: 1.6 }}>
         <div className="between">
           <h3 style={{ margin: 0 }}>{ALERT_EMOJI[a.type] || '🔔'} {a.title || a.type}</h3>
           <span className="dim" style={{ fontSize: 11, flex: '0 0 auto' }}>{relTime(a.at)}</span>
         </div>
-        <div style={{ marginTop: 10 }}><Linkified text={a.text} /></div>
+        {items ? (
+          <div style={{ marginTop: 10 }}>
+            {items.map((it, i) => (
+              <div key={i} style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '10px 12px', marginBottom: 8, opacity: it.feedback === 'down' ? .5 : 1 }}>
+                <div className="lt" style={{ fontSize: 14 }}>{it.t}</div>
+                {it.s && <div className="lm" style={{ marginTop: 3 }}>{it.s}</div>}
+                <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {it.link && <a className="btn app" style={{ padding: '4px 10px', fontSize: 12, textDecoration: 'none' }} href={cleanUrl(it.link)} target="_blank" rel="noopener noreferrer">{a.type === 'podcast' ? '▶ Listen' : 'Open ↗'}</a>}
+                  {fbBtn(it.feedback, () => onItemFeedback(a.id, items, i, 'up'), 'up', '👍')}
+                  {fbBtn(it.feedback, () => onItemFeedback(a.id, items, i, 'down'), 'down', '👎')}
+                  <button className="btn def" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => { addTodayItem({ title: it.t.slice(0, 70), why: a.title || 'from Rupert', pk }); setActMsg(`"${it.t.slice(0, 30)}…" added to Today ✓`); }}>➕ Today</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ marginTop: 10, whiteSpace: 'pre-wrap' }}><Linkified text={a.text} /></div>
+        )}
       </div>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <button className="btn app" onClick={() => { addTodayItem({ title: actLabel, why: a.title || 'from Rupert', pk }); setActMsg('Added to Today ✓'); }}>➕ Add to Today</button>
+        {app && <a className="btn app" style={{ textDecoration: 'none' }} href={a.appUrl || app[1]} target="_blank" rel="noopener noreferrer">Open {app[0]} ↗</a>}
+        {!items && <button className="btn app" onClick={() => { addTodayItem({ title: actLabel, why: a.title || 'from Rupert', pk }); setActMsg('Added to Today ✓'); }}>➕ Add to Today</button>}
         <button className="btn def" onClick={() => { addPlan(a.title || actLabel, pk, String(a.text || '').slice(0, 500)); setActMsg('Saved to Plans (someday) ✓'); }}>📌 Save as plan</button>
         <button className="btn def" onClick={() => openRupert(`About your "${a.title || a.type}" alert from ${relTime(a.at)} — tell me more.`)}>Ask Rupert</button>
       </div>
       {actMsg && <p className="dim" style={{ fontSize: 12, margin: '6px 2px' }}>{actMsg}</p>}
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
-        {fbBtn('up', '👍', 'Helpful')}
-        {fbBtn('down', '👎', 'Not helpful')}
+        {!items && fbBtn(a.feedback, () => onFeedback(a.id, 'up'), 'up', '👍 Helpful')}
+        {!items && fbBtn(a.feedback, () => onFeedback(a.id, 'down'), 'down', '👎 Not helpful')}
         <button className="btn def" onClick={() => { onDelete(a.id); onBack(); }} style={{ color: 'var(--rose)' }}><Trash2 size={14} style={{ verticalAlign: '-2px' }} /> Delete</button>
       </div>
-      <p className="banner">👍/👎 teaches Rupert what's worth sending — he reads your ratings before composing new content.</p>
+      <p className="banner">{items ? 'Rate each item — 👎 fades it and Rupert sends fewer like it; 👍 means more.' : '👍/👎 teaches Rupert what’s worth sending.'}</p>
     </section>
   );
 }
@@ -346,7 +394,42 @@ function TodayItemRow({ t, onDone, onDelay }) {
   );
 }
 
-function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem }) {
+// Make the brief's 🥇🥈🥉 focus lines tappable: matching plan → activate + open
+// Planning; already on today's list → just confirm; otherwise → add to Today.
+function BriefActions({ brief, plans, todayItems, activatePlan, addTodayItem, goTab }) {
+  const [msg, setMsg] = useState('');
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const lines = String(brief || '').split('\n')
+    .map((l) => { const m = l.match(/^\s*(?:🥇|🥈|🥉)\s*(.+)$/u); return m ? m[1].replace(/[.。]\s*$/, '').trim() : null; })
+    .filter(Boolean).slice(0, 3);
+  if (!lines.length) return null;
+  const act = (line) => {
+    const n = norm(line);
+    const plan = (plans || []).find((p) => { const pn = norm(p.title); return pn.length > 3 && (n.includes(pn) || pn.includes(n)); });
+    if (plan) {
+      if (plan.status !== 'active' && plan.status !== 'done') activatePlan(plan.id);
+      goTab('planning');
+      return;
+    }
+    const onList = (todayItems || []).some((t) => norm(t.title) === n);
+    if (onList) { setMsg(`"${line}" is already on Today ✓`); return; }
+    addTodayItem({ title: line, why: "from Rupert's brief", pk: 'purpose' });
+    setMsg(`"${line}" added to Today ✓`);
+  };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="dim" style={{ fontSize: 11, marginBottom: 6 }}>Act on these — tap to plan or add to Today:</div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        {lines.map((l, i) => (
+          <button key={i} className="btn def" style={{ fontSize: 12 }} onClick={() => act(l)}>{['🥇', '🥈', '🥉'][i]} {l.slice(0, 50)} →</button>
+        ))}
+      </div>
+      {msg && <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>{msg}</div>}
+    </div>
+  );
+}
+
+function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab }) {
   const brief = data && data.todayBrief && data.todayBrief.text;
   const alerts = (data && data.alerts) || [];
   const items = (data && data.todayItems ? data.todayItems : []).filter((t) => t.status !== 'delayed');
@@ -364,10 +447,11 @@ function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, 
         <p className="dim" style={{ fontSize: 11, marginTop: 10, marginBottom: 0 }}>4–5 things a day. ✓ done · ⏰ delay (1 day / 1 week / 1 month — it comes back on its date).</p>
       </Collapse>
 
-      {/* ☀️ Brief — collapsed to its first meaningful line */}
+      {/* ☀️ Brief — collapsed to its first meaningful line; focus lines are actionable */}
       {brief && (
         <Collapse icon="☀️" title="Rupert's brief" sub={briefSub} right={data.todayBrief.date || ''}>
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}><Linkified text={brief} /></div>
+          <BriefActions brief={brief} plans={data.plans} todayItems={data.todayItems} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} />
         </Collapse>
       )}
 
@@ -711,7 +795,7 @@ export default function App() {
     setLocation, setFcmToken,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
-    setAlertPref,
+    setAlertPref, setAlertItemFeedback,
   } = useLifeData(user);
 
   // Daily roll-forward of the Today list (client fallback — cron-brief also does this
@@ -896,7 +980,7 @@ export default function App() {
       {focus ? (
         <FocusView focus={focus} data={data} openRupert={openRupert} onOpenApp={() => { setFocus(null); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
       ) : openAlert ? (
-        <AlertDetail alert={openAlert} onBack={() => setOpenAlertId(null)} onFeedback={setAlertFeedback} onDelete={deleteAlert} openRupert={openRupert} addTodayItem={addTodayItem} addPlan={addPlan} />
+        <AlertDetail alert={openAlert} onBack={() => setOpenAlertId(null)} onFeedback={setAlertFeedback} onItemFeedback={setAlertItemFeedback} onDelete={deleteAlert} openRupert={openRupert} addTodayItem={addTodayItem} addPlan={addPlan} />
       ) : searchOpen ? (
         <SearchView data={data} onBack={() => setSearchOpen(false)} onOpenAlert={(id) => { setSearchOpen(false); setOpenAlertId(id); }} goTab={goTab} />
       ) : alertsOpen ? (
@@ -907,7 +991,7 @@ export default function App() {
         <>
           {tab === 'home' && (
             <>
-              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} />
+              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} />
               {FIREBASE_READY && (
                 <div className="locrow">
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>
