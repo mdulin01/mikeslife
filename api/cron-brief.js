@@ -78,6 +78,8 @@ export default async function handler(req, res) {
     // Context (no check-in — capacity is assumed at 4-5 items/day).
     const ctx = [];
     if (openItems.length) ctx.push("Today's list (4-5 items, accept-or-delay model): " + openItems.map((t) => `${t.title} [${t.pk}${t.why ? ' · ' + t.why : ''}]`).join('; '));
+    const doneRecently = (d.todayItems || []).filter((t) => t.status === 'done').map((t) => t.title);
+    if (doneRecently.length) ctx.push('Recently completed: ' + doneRecently.join('; '));
     const active = (d.plans || []).filter((p) => p.status === 'active');
     if (active.length) ctx.push('Active plans: ' + active.map((p) => p.title).join('; '));
     const stalled = active.filter((p) => p.updatedAt && (Date.now() - new Date(p.updatedAt).getTime()) > 14 * 86400 * 1000);
@@ -89,7 +91,27 @@ export default async function handler(req, res) {
     const fb = (d.alerts || []).filter((a) => a.feedback).slice(0, 10);
     if (fb.length) ctx.push('His ratings of past content (more like 👍, less like 👎): ' + fb.map((a) => `${a.feedback === 'up' ? '👍' : '👎'} ${a.title}`).join('; '));
 
-    const SYS = `You are Rupert, Mike's chief of staff. Write a SHORT morning brief he reads on his phone, in EXACTLY this shape:
+    const isSunday = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date()) === 'Sun';
+
+    const SYS_WEEKLY = `You are Rupert, Mike's chief of staff. It's Sunday — write his WEEKLY REVIEW + week ahead, phone-readable, in EXACTLY this shape:
+Good morning Mike — your week in review.
+Wins:
+- ...
+- ...
+Plans:
+- ... (progress or stalled, per plan)
+Health
+- ...
+Money
+- ...
+Week ahead:
+🥇 ...
+🥈 ...
+🥉 ...
+One question to sit with: ...
+Rules: short lines. Wins come from done items + plan activity in the context. Only include Health/Money lines supported by the context. The week-ahead picks come from active plans + today's list. End with one genuinely good reflective question. No preamble, no sign-off.`;
+
+    const SYS = isSunday ? SYS_WEEKLY : `You are Rupert, Mike's chief of staff. Write a SHORT morning brief he reads on his phone, in EXACTLY this shape:
 Good morning Mike.
 Today's focus:
 🥇 ...
@@ -115,7 +137,7 @@ Rules: keep every line short. Draw the 3 focus items from today's list and activ
 
     patch.todayBrief = { text: brief, date: today };
     patch.alerts = [
-      { id: 'a' + Date.now(), type: 'brief', title: '☀️ Morning brief ' + today, text: brief, at, feedback: null },
+      { id: 'a' + Date.now(), type: 'brief', title: (isSunday ? '🗓️ Weekly review ' : '☀️ Morning brief ') + today, text: brief, at, feedback: null },
       ...(d.alerts || []),
     ].slice(0, 120);
     await ref.set(patch, { merge: true });
