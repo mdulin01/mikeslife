@@ -92,6 +92,8 @@ export default async function handler(req, res) {
     if (d.financeContext) ctx.push('Finances:\n' + d.financeContext);
     if (d.healthContext) ctx.push('Health:\n' + d.healthContext);
     if (d.location && (d.location.place || d.location.lat)) ctx.push(`Location: ${d.location.place || `${d.location.lat}, ${d.location.lng}`}`);
+    if (d.calendarText) ctx.push('Calendar (week ahead):\n' + d.calendarText);
+    if (d.emailText) ctx.push('Recent email headers:\n' + d.emailText);
     const fb = [];
     for (const a of (d.alerts || []).slice(0, 40)) {
       if (a.feedback) fb.push(`${a.feedback === 'up' ? '👍' : '👎'} ${a.title}`);
