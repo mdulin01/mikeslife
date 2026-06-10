@@ -52,6 +52,18 @@ export function useLifeData(user) {
             ...p, status: p.status || 'someday', stages: p.stages || [], type: p.type || 'generic',
           }));
         }
+        // Firestore can't hold nested arrays, so the Google sync stores objects;
+        // convert back to the tuple shapes the Calendar/Email components render.
+        if (fresh.calendar && fresh.calendar.weekEvents) {
+          const we = {};
+          Object.entries(fresh.calendar.weekEvents).forEach(([k, list]) => {
+            we[k] = (list || []).map((e) => Array.isArray(e) ? e : (e.prop ? [e.t, 'prop', e.c] : [e.t, e.c]));
+          });
+          fresh.calendar = { ...fresh.calendar, weekEvents: we };
+        }
+        if (Array.isArray(fresh.emailSignals) && fresh.emailSignals.length && !Array.isArray(fresh.emailSignals[0])) {
+          fresh.emailSignals = fresh.emailSignals.map((m) => [m.tag, m.accent, m.from, m.subject, m.hint, m.act]);
+        }
         setData({ ...initial(), ...fresh });
       } else {
         setDoc(ref, initial()).catch(console.error);

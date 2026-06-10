@@ -86,7 +86,8 @@ export default async function handler(req, res) {
         const idx = DAY_IDX[p.weekday];
         if (idx === undefined) continue;
         const time = e.start?.dateTime ? `${p.hour}:00 ` : '';
-        if (weekEvents[idx].length < 5) weekEvents[idx].push([(time + e.summary).slice(0, 28), colorFor(cal.summary || '', e.summary)]);
+        // Firestore can't store arrays-in-arrays — store objects; the app converts to tuples.
+        if (weekEvents[idx].length < 5) weekEvents[idx].push({ t: (time + e.summary).slice(0, 28), c: colorFor(cal.summary || '', e.summary) });
         calLines.push(`${p.weekday} ${p.month}/${p.day}${e.start?.dateTime ? ' ' + p.hour + ':00' : ''} — ${e.summary} [${cal.summary || 'cal'}]`);
       }
     }
@@ -103,7 +104,7 @@ export default async function handler(req, res) {
       const from = (h.From || '').replace(/<.*>/, '').replace(/"/g, '').trim().slice(0, 30);
       const subject = (h.Subject || '(no subject)').slice(0, 70);
       const [tag, accent, hint, act] = tagFor(h.From || '', subject);
-      if (tag !== '📬 INBOX' && emailSignals.length < 8) emailSignals.push([tag, accent, from, subject, hint, act]);
+      if (tag !== '📬 INBOX' && emailSignals.length < 8) emailSignals.push({ tag, accent, from, subject, hint, act });
       mailLines.push(`${from}: ${subject}`);
     }
 
