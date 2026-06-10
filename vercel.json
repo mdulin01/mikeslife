@@ -15,6 +15,10 @@
     {
       "path": "/api/cron-celebrate",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron-finance",
+      "schedule": "30 16 * * *"
     }
   ]
 }

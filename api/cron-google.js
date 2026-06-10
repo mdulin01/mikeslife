@@ -7,6 +7,7 @@
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const EASTERN = 'America/New_York';
@@ -26,6 +27,11 @@ function colorFor(calName, title) {
   if (/invoice|tax|bank|finance|rent/.test(s)) return '--amber';
   return '--violet'; // work/consulting default
 }
+
+// Emails that deserve a PUSH (not just a passive signal row): trade confirmations,
+// large-transaction notices, brokerage insights.
+const TRADE_RE = /trade (confirmation|executed|alert)|order (executed|filled|placed)|your (trade|order)|transaction (alert|notice)|large (transaction|purchase|withdrawal)|wire transfer|insight|market (update|commentary)/i;
+const FIN_SENDER_RE = /vanguard|fidelity|schwab|tiaa|fifth third|53\.com|chase|amex|robinhood|etrade|merrill/i;
 
 function tagFor(from, subject) {
   const s = (from + ' ' + subject).toLowerCase();
@@ -49,6 +55,8 @@ export default async function handler(req, res) {
   try {
     if (!getApps().length) initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
     const db = getFirestore();
+    const lifeRef = db.doc(`lifeos/${OWNER_UID}`);
+    const d0 = (await lifeRef.get()).data() || {};
     const sec = (await db.doc('secrets/google').get()).data();
     if (!sec || !sec.refreshToken) return res.status(503).json({ error: 'not-connected', message: 'Visit /api/google-auth first.' });
 
@@ -98,6 +106,8 @@ export default async function handler(req, res) {
     }), at);
     const emailSignals = [];
     const mailLines = [];
+    const tradeHits = [];
+    const mailSeen = new Set(d0.financeMailSeen || []);
     for (const m of (list.messages || []).slice(0, 12)) {
       const msg = await gFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`, at);
       const h = Object.fromEntries((msg.payload?.headers || []).map((x) => [x.name, x.value]));
@@ -106,9 +116,36 @@ export default async function handler(req, res) {
       const [tag, accent, hint, act] = tagFor(h.From || '', subject);
       if (tag !== '📬 INBOX' && emailSignals.length < 8) emailSignals.push({ tag, accent, from, subject, hint, act });
       mailLines.push(`${from}: ${subject}`);
+      if (!mailSeen.has(m.id) && FIN_SENDER_RE.test(h.From || '') && TRADE_RE.test(subject)) {
+        tradeHits.push(`${from}: ${subject}`);
+        mailSeen.add(m.id);
+      }
+    }
+
+    // Trade/large-txn emails → a pushed 💰 alert (unless finance alerts are muted).
+    const patchExtra = {};
+    if (tradeHits.length && !(d0.alertPrefs && d0.alertPrefs.finance === false)) {
+      const at2 = new Date().toISOString();
+      patchExtra.financeMailSeen = [...mailSeen].slice(-200);
+      patchExtra.alerts = [
+        { id: 'a' + Date.now(), type: 'finance', title: `💰 Brokerage mail — ${tradeHits.length} item${tradeHits.length > 1 ? 's' : ''}`, text: tradeHits.join('\n'), at: at2, feedback: null, appUrl: 'https://www.mikesmoney.app' },
+        ...(d0.alerts || []),
+      ].slice(0, 120);
+      const tokens = Array.from(new Set([...(d0.fcmTokens || []), d0.fcmToken].filter(Boolean)));
+      for (const token of tokens) {
+        try {
+          await getMessaging().send({
+            token,
+            notification: { title: '💰 Brokerage mail', body: tradeHits[0].slice(0, 180) },
+            data: { url: 'https://mikeslife.app/?source=push&focus=content' },
+            webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: 'https://mikeslife.app/?source=push&focus=content' } },
+          });
+        } catch (e) { console.error('push failed:', e.message); }
+      }
     }
 
     await db.doc(`lifeos/${OWNER_UID}`).set({
+      ...patchExtra,
       calendar: { weekEvents, updatedAt: new Date().toISOString() },
       calendarText: calLines.slice(0, 25).join('\n') || 'No events in the next 7 days.',
       ...(emailSignals.length ? { emailSignals } : {}),
@@ -116,7 +153,7 @@ export default async function handler(req, res) {
       googleSyncedAt: new Date().toISOString(),
     }, { merge: true });
 
-    return res.status(200).json({ ok: true, events: calLines.length, signals: emailSignals.length, mails: mailLines.length });
+    return res.status(200).json({ ok: true, events: calLines.length, signals: emailSignals.length, mails: mailLines.length, tradeAlerts: tradeHits.length });
   } catch (e) {
     console.error('cron-google error', e);
     return res.status(500).json({ error: e.message || 'error' });
