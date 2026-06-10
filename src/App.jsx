@@ -43,12 +43,148 @@ const relTime = (iso) => {
   return Math.floor(s / 86400) + 'd ago';
 };
 
+// Make a model-written URL actually work: strip trailing punctuation the URL regex
+// swallowed (the usual reason Spotify links 404) and re-encode Spotify search terms
+// (apostrophes/quotes/colons from episode titles break the path unless encoded).
+function cleanUrl(raw) {
+  let url = raw.replace(/[.,;:!?"'»)\]]+$/, '');
+  const m = url.match(/^https?:\/\/open\.spotify\.com\/search\/(.+)$/i);
+  if (m) {
+    let q; try { q = decodeURIComponent(m[1]); } catch { q = m[1]; }
+    url = 'https://open.spotify.com/search/' + encodeURIComponent(q.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim());
+  }
+  return url;
+}
+
 // Turn bare URLs in Rupert's text into clickable links (podcasts, recipes, travel).
 function Linkified({ text }) {
   const parts = String(text || '').split(/(https?:\/\/[^\s)]+)/g);
-  return parts.map((s, i) => /^https?:\/\//.test(s)
-    ? <a key={i} href={s} target="_blank" rel="noopener noreferrer" className="clink">{s.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]} ↗</a>
-    : <span key={i}>{s}</span>);
+  return parts.map((s, i) => {
+    if (!/^https?:\/\//.test(s)) return <span key={i}>{s}</span>;
+    const url = cleanUrl(s);
+    const trail = s.slice(s.replace(/[.,;:!?"'»)\]]+$/, '').length);
+    return (
+      <span key={i}>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="clink">{url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]} ↗</a>
+        {trail}
+      </span>
+    );
+  });
+}
+
+// ───────────────────────── Alerts (Rupert push history) ─────────────────────────
+const ALERT_TYPES = [
+  ['all', 'All', ''],
+  ['brief', 'Briefs', '☀️'],
+  ['podcast', 'Podcasts', '🎧'],
+  ['recipe', 'Recipes', '🍳'],
+  ['mealprep', 'Meal-prep', '🥗'],
+  ['travel', 'Travel', '✈️'],
+];
+const ALERT_EMOJI = { brief: '☀️', podcast: '🎧', recipe: '🍳', mealprep: '🥗', travel: '✈️' };
+const RECENT_DAYS = 5;
+
+const alertSnippet = (a) => {
+  const line = String(a.text || '').split('\n').map((s) => s.trim()).filter((s) => s && !/^https?:\/\//.test(s) && !/^Listen:/i.test(s))
+    .slice(a.type === 'brief' ? 1 : 0)[0] || '';
+  return line.length > 90 ? line.slice(0, 90) + '…' : line;
+};
+const isRecent = (a) => a.at && (Date.now() - new Date(a.at).getTime()) < RECENT_DAYS * 86400 * 1000;
+
+// Home-page card: the last few days of alerts as tappable 1–2 line summaries.
+function RecentAlerts({ alerts, onOpen, onAll, onSearch }) {
+  const recent = alerts.filter(isRecent).slice(0, 8);
+  const older = alerts.length - recent.length;
+  if (!alerts.length) return null;
+  return (
+    <div className="card">
+      <div className="between"><h3 style={{ margin: 0 }}>🔔 Recent from Rupert</h3>
+        <button className="btn def" style={{ padding: '5px 10px', fontSize: 12 }} onClick={onSearch}>🔎 Search</button></div>
+      <div style={{ marginTop: 8 }}>
+        {recent.length ? recent.map((a) => (
+          <div className="loop" key={a.id} onClick={() => onOpen(a.id)} style={{ cursor: 'pointer' }}>
+            <div className="dot" style={{ background: 'var(--sky)' }} />
+            <div style={{ minWidth: 0 }}>
+              <div className="lt">{ALERT_EMOJI[a.type] || '🔔'} {a.title || a.type} <span className="dim" style={{ fontWeight: 400, fontSize: 11 }}>· {relTime(a.at)}</span></div>
+              <div className="lm">{alertSnippet(a)}</div>
+            </div>
+          </div>
+        )) : <p className="dim" style={{ fontSize: 13 }}>Nothing in the last {RECENT_DAYS} days.</p>}
+      </div>
+      {older > 0 && <button className="btn def" style={{ marginTop: 10, fontSize: 12 }} onClick={onAll}>Prior alerts ({older}) →</button>}
+    </div>
+  );
+}
+
+// Full history: search + type filter, tap an alert to open it.
+function AlertsView({ alerts, onOpen, onBack, autoFocusSearch }) {
+  const [q, setQ] = useState('');
+  const [type, setType] = useState('all');
+  const inputRef = useRef(null);
+  useEffect(() => { if (autoFocusSearch && inputRef.current) inputRef.current.focus(); }, [autoFocusSearch]);
+  const shown = alerts.filter((a) => (type === 'all' || a.type === type)
+    && (!q.trim() || ((a.title || '') + ' ' + (a.text || '')).toLowerCase().includes(q.trim().toLowerCase())));
+  return (
+    <section>
+      <button className="backbtn" onClick={onBack}>‹ back</button>
+      <div className="card">
+        <h3>🔔 All alerts</h3>
+        <input ref={inputRef} type="text" placeholder="Search alerts…" value={q} onChange={(e) => setQ(e.target.value)}
+          style={{ width: '100%', boxSizing: 'border-box', marginTop: 8 }} />
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+          {ALERT_TYPES.map(([k, label, em]) => (
+            <button key={k} className="pill" onClick={() => setType(k)}
+              style={{ cursor: 'pointer', border: '1px solid var(--line)', background: type === k ? 'var(--teal)' : 'var(--panel2)', color: type === k ? '#04201c' : 'var(--mut)' }}>
+              {em} {label}
+            </button>
+          ))}
+        </div>
+        <div style={{ marginTop: 12 }}>
+          {shown.length ? shown.map((a) => (
+            <div className="loop" key={a.id} onClick={() => onOpen(a.id)} style={{ cursor: 'pointer' }}>
+              <div className="dot" style={{ background: 'var(--sky)' }} />
+              <div style={{ minWidth: 0 }}>
+                <div className="lt">{ALERT_EMOJI[a.type] || '🔔'} {a.title || a.type}
+                  <span className="dim" style={{ fontWeight: 400, fontSize: 11 }}> · {relTime(a.at)}</span>
+                  {a.feedback && <span style={{ fontSize: 11 }}> {a.feedback === 'up' ? '👍' : '👎'}</span>}</div>
+                <div className="lm">{alertSnippet(a)}</div>
+              </div>
+            </div>
+          )) : <p className="dim" style={{ fontSize: 13 }}>No alerts match.</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// One alert, full screen: read, follow links, rate it, delete it, ask Rupert.
+function AlertDetail({ alert: a, onBack, onFeedback, onDelete, openRupert }) {
+  if (!a) return null;
+  const fbBtn = (fb, em, label) => (
+    <button className="btn def" onClick={() => onFeedback(a.id, fb)}
+      style={a.feedback === fb ? { background: 'var(--teal)', color: '#04201c', borderColor: 'var(--teal)' } : {}}>
+      {em} {label}
+    </button>
+  );
+  return (
+    <section className="focusview">
+      <button className="backbtn" onClick={onBack}>‹ back</button>
+      <div className="card" style={{ borderLeft: '3px solid var(--sky)', whiteSpace: 'pre-wrap', fontSize: 15, lineHeight: 1.6 }}>
+        <div className="between">
+          <h3 style={{ margin: 0 }}>{ALERT_EMOJI[a.type] || '🔔'} {a.title || a.type}</h3>
+          <span className="dim" style={{ fontSize: 11, flex: '0 0 auto' }}>{relTime(a.at)}</span>
+        </div>
+        <div style={{ marginTop: 10 }}><Linkified text={a.text} /></div>
+      </div>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        {fbBtn('up', '👍', 'Helpful')}
+        {fbBtn('down', '👎', 'Not helpful')}
+        <button className="btn app" onClick={() => openRupert(`About your "${a.title || a.type}" alert from ${relTime(a.at)} — tell me more.`)}>Ask Rupert</button>
+        <button className="btn def" onClick={() => { onDelete(a.id); onBack(); }} style={{ color: 'var(--rose)' }}><Trash2 size={14} style={{ verticalAlign: '-2px' }} /> Delete</button>
+      </div>
+      <p className="banner">👍/👎 teaches Rupert what's worth sending — he reads your ratings before composing new content.</p>
+    </section>
+  );
 }
 
 // ───────────────────────── Login ─────────────────────────
@@ -96,9 +232,10 @@ function CheckIn({ quote, capVal, setCapVal, onSave }) {
   );
 }
 
-function Today({ capVal, data }) {
+function Today({ capVal, data, onOpenAlert, onAllAlerts, onSearchAlerts }) {
   const n = capLevel(capVal) === 'high' ? 10 : capLevel(capVal) === 'med' ? 4 : 0;
   const brief = data && data.todayBrief && data.todayBrief.text;
+  const alerts = (data && data.alerts) || [];
   return (
     <section>
       {brief && (
@@ -107,7 +244,9 @@ function Today({ capVal, data }) {
           <Linkified text={brief} />
         </div>
       )}
-      {data && data.contentFeed && data.contentFeed.text && (
+      <RecentAlerts alerts={alerts} onOpen={onOpenAlert} onAll={onAllAlerts} onSearch={onSearchAlerts} />
+      {/* Until alert history flows from the mini scripts, fall back to the single contentFeed card. */}
+      {!alerts.length && data && data.contentFeed && data.contentFeed.text && (
         <div className="card" style={{ borderLeft: '3px solid var(--sky)', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}>
           <div className="between"><h3 style={{ margin: 0 }}>{data.contentFeed.title || 'From Rupert'}</h3>
             {data.contentFeed.at && <span className="dim" style={{ fontSize: 11 }}>{relTime(data.contentFeed.at)}</span>}</div>
@@ -460,7 +599,13 @@ export default function App() {
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken,
+    setAlertFeedback, deleteAlert,
   } = useLifeData(user);
+
+  // Alert navigation: openAlertId = a single alert's page; alertsOpen = the
+  // searchable full-history view ('search' auto-focuses the search box).
+  const [openAlertId, setOpenAlertId] = useState(null);
+  const [alertsOpen, setAlertsOpen] = useState(null); // null | 'list' | 'search'
 
   // A tapped notification can deep-link to a focused view (?focus=brief|content)
   // or open Rupert (?rupert=1). Pillars still come in via ?view=<pillar>.
@@ -557,7 +702,8 @@ export default function App() {
 
   const now = new Date();
   const openPillar = (k) => { setPillar(k); };
-  const goTab = (t) => { setPillar(null); setTab(t); };
+  const goTab = (t) => { setPillar(null); setOpenAlertId(null); setAlertsOpen(null); setTab(t); };
+  const openAlert = data.alerts ? data.alerts.find((a) => a.id === openAlertId) : null;
 
   const onSaveCheckin = (c) => { saveCheckin({ ...c, date: easternYMD(now) }); };
 
@@ -626,13 +772,17 @@ export default function App() {
 
       {focus ? (
         <FocusView focus={focus} data={data} openRupert={openRupert} onOpenApp={() => { setFocus(null); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
+      ) : openAlert ? (
+        <AlertDetail alert={openAlert} onBack={() => setOpenAlertId(null)} onFeedback={setAlertFeedback} onDelete={deleteAlert} openRupert={openRupert} />
+      ) : alertsOpen ? (
+        <AlertsView alerts={data.alerts || []} onOpen={setOpenAlertId} onBack={() => setAlertsOpen(null)} autoFocusSearch={alertsOpen === 'search'} />
       ) : pillar ? (
         <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('home')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
       ) : (
         <>
           {tab === 'home' && (
             <>
-              <Today capVal={capVal} data={data} />
+              <Today capVal={capVal} data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} />
               {FIREBASE_READY && (
                 <div className="locrow">
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>

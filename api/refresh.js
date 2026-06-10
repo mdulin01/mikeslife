@@ -29,7 +29,7 @@ const CONTENT_PROMPTS = {
   travel: 'Suggest 2–3 inspiring travel ideas for Mike (loves hiking, biking, warm places; has a January birthday trip and a "month in Spain" goal). Keep it short.',
 };
 const CONTENT_TITLES = { podcast: '🎧 Podcasts for you', recipe: "🍳 Dinner ideas", mealprep: '🥗 Sunday meal-prep', travel: '✈️ Travel ideas' };
-const LINK_RULE = ' For each item, add a clickable link on its own line: for podcasts use a Spotify search URL "Listen: https://open.spotify.com/search/" + the show and episode words joined by %20; for recipes/travel a relevant Google search URL "https://www.google.com/search?q=" + the words joined by +. Keep it phone-friendly, no preamble.';
+const LINK_RULE = ' For each item, add a clickable link on its own line: for podcasts use a Spotify search URL "Listen: https://open.spotify.com/search/" + the show and episode words joined by %20; for recipes/travel a relevant Google search URL "https://www.google.com/search?q=" + the words joined by +. In search words use ONLY letters, numbers and spaces — no apostrophes, quotes, colons, ampersands or other punctuation — and never put any character (period, comma, paren) immediately after a URL. Keep it phone-friendly, no preamble.';
 
 // Eastern-time slot (Mike's timezone) — manual refresh always yields something.
 function slotNow() {
@@ -50,6 +50,9 @@ function ctx(d) {
   if (d.healthContext) lines.push('Health:\n' + d.healthContext);
   const someday = (d.plans || []).filter((p) => p.status === 'someday').map((p) => p.title);
   if (someday.length) lines.push('Someday list: ' + someday.join(', '));
+  // What he rated — steer new content toward 👍 and away from 👎.
+  const fb = (d.alerts || []).filter((a) => a.feedback).slice(0, 12);
+  if (fb.length) lines.push('His ratings of past content (send more like 👍, avoid more like 👎): ' + fb.map((a) => `${a.feedback === 'up' ? '👍' : '👎'} ${a.title}: ${String(a.text || '').slice(0, 60)}`).join(' | '));
   return lines.join('\n') || 'No saved context yet.';
 }
 
@@ -84,6 +87,11 @@ export default async function handler(req, res) {
       ],
     });
     patch.contentFeed = { slot, title: CONTENT_TITLES[slot], text: (cc.choices?.[0]?.message?.content || '').trim(), at: refreshedAt };
+    // Also land it in the alert history (newest first, capped at 120).
+    patch.alerts = [
+      { id: 'a' + Date.now(), type: slot, title: CONTENT_TITLES[slot], text: patch.contentFeed.text, at: refreshedAt, feedback: null },
+      ...(d.alerts || []),
+    ].slice(0, 120);
 
     // 2) If a pillar is open or we're in the Inbox, add a couple of fresh ideas.
     let added = 0;

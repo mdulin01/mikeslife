@@ -69,6 +69,12 @@ function buildContext(d) {
     lines.push(`Current location: ${d.location.place || `${d.location.lat}, ${d.location.lng}`}${ago}. Use it for timely, context-aware suggestions when relevant.`);
   }
   if (Array.isArray(d.memories) && d.memories.length) lines.push('Recent memories: ' + d.memories.slice(0, 5).map((m) => `${m.date || ''} ${m.text}`).join(' | '));
+  // Recent alerts you sent him + his 👍/👎 ratings — so you can discuss them and learn his taste.
+  if (Array.isArray(d.alerts) && d.alerts.length) {
+    lines.push('Recent alerts you sent: ' + d.alerts.slice(0, 6).map((a) => `[${a.type}${a.feedback ? ' ' + (a.feedback === 'up' ? '👍' : '👎') : ''}] ${a.title}`).join(' | '));
+    const fb = d.alerts.filter((a) => a.feedback).slice(0, 10);
+    if (fb.length) lines.push('His content ratings (more like 👍, less like 👎): ' + fb.map((a) => `${a.feedback === 'up' ? '👍' : '👎'} ${a.title}`).join('; '));
+  }
   if (Array.isArray(d.documents) && d.documents.length) lines.push('Documents on file: ' + d.documents.map((x) => x.title).join(', '));
   return lines.join('\n');
 }

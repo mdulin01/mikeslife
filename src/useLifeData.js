@@ -21,6 +21,9 @@ const initial = () => ({
   // Filled by the backend Google pipeline (Phase 2); falls back to previews when absent.
   calendar: null,      // { weekEvents: { 0:[[title, '--color']|[title,'prop','--color'], ...], ... }, updatedAt }
   emailSignals: null,  // [ [TAG, '--accent', from, subject, hintPrefix, actionText], ... ]
+  // Alert history — every brief/content push lands here (newest first, capped at 120).
+  // Written by the mini scripts + /api/refresh; the app reads / gives feedback / deletes.
+  alerts: [],          // [{ id, type: 'brief'|'podcast'|'recipe'|'mealprep'|'travel', title, text, at, feedback: 'up'|'down'|null }]
 });
 
 // Native LifeOS data. Persists to Firestore doc lifeos/{uid} when configured;
@@ -209,6 +212,18 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, documents: (p.documents || []).filter((x) => x.id !== id) }), ['documents']);
   }, [mutate]);
 
+  // ── Alerts: feedback (👍/👎 toggle) + delete ──
+  const setAlertFeedback = useCallback((id, fb) => {
+    mutate((p) => ({
+      ...p,
+      alerts: (p.alerts || []).map((a) => a.id === id ? { ...a, feedback: a.feedback === fb ? null : fb } : a),
+    }), ['alerts']);
+  }, [mutate]);
+
+  const deleteAlert = useCallback((id) => {
+    mutate((p) => ({ ...p, alerts: (p.alerts || []).filter((a) => a.id !== id) }), ['alerts']);
+  }, [mutate]);
+
   return {
     data, loaded,
     resolveProposal, saveCheckin,
@@ -217,5 +232,6 @@ export function useLifeData(user) {
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken,
+    setAlertFeedback, deleteAlert,
   };
 }
