@@ -24,6 +24,10 @@ const initial = () => ({
   // Alert history — every brief/content push lands here (newest first, capped at 120).
   // Written by the mini scripts + /api/refresh; the app reads / gives feedback / deletes.
   alerts: [],          // [{ id, type: 'brief'|'podcast'|'recipe'|'mealprep'|'travel', title, text, at, feedback: 'up'|'down'|null }]
+  // Today engine — 4-5 concrete items/day (no check-in; capacity is assumed).
+  // Regenerated daily (client fallback + cron-brief); delayed items resurface on their date.
+  todayItems: [],      // [{ id, title, why, pk, planId?, status: 'pending'|'done'|'delayed', until: null|'YYYY-MM-DD' }]
+  todayItemsDate: null,
 });
 
 // Native LifeOS data. Persists to Firestore doc lifeos/{uid} when configured;
@@ -100,6 +104,7 @@ export function useLifeData(user) {
       ...p,
       plans: p.plans.map((pl) => pl.id !== planId ? pl : {
         ...pl,
+        updatedAt: new Date().toISOString(), // activity stamp — cron-brief flags plans stalled >14d
         stages: pl.stages.map((s) => s.id !== stageId ? s : {
           ...s,
           tasks: s.tasks.map((t) => t.id !== taskId ? t : { ...t, done: !t.done }),
@@ -212,6 +217,27 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, documents: (p.documents || []).filter((x) => x.id !== id) }), ['documents']);
   }, [mutate]);
 
+  // ── Today engine ──
+  const setTodayItems = useCallback((items, date) => {
+    mutate((p) => ({ ...p, todayItems: items, todayItemsDate: date }), ['todayItems', 'todayItemsDate']);
+  }, [mutate]);
+
+  const markTodayDone = useCallback((id) => {
+    mutate((p) => ({
+      ...p,
+      todayItems: (p.todayItems || []).map((t) => t.id === id ? { ...t, status: t.status === 'done' ? 'pending' : 'done' } : t),
+    }), ['todayItems']);
+  }, [mutate]);
+
+  const delayTodayItem = useCallback((id, days) => {
+    const until = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .format(new Date(Date.now() + days * 86400 * 1000));
+    mutate((p) => ({
+      ...p,
+      todayItems: (p.todayItems || []).map((t) => t.id === id ? { ...t, status: 'delayed', until } : t),
+    }), ['todayItems']);
+  }, [mutate]);
+
   // ── Alerts: feedback (👍/👎 toggle) + delete ──
   const setAlertFeedback = useCallback((id, fb) => {
     mutate((p) => ({
@@ -233,5 +259,6 @@ export function useLifeData(user) {
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken,
     setAlertFeedback, deleteAlert,
+    setTodayItems, markTodayDone, delayTodayItem,
   };
 }

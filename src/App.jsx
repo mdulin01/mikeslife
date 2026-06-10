@@ -1,5 +1,5 @@
 /* global __BUILD__ */
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Trash2, RefreshCw } from 'lucide-react';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { FIREBASE_READY, OWNER_UID, auth, provider } from './firebase';
@@ -10,7 +10,7 @@ import RupertChat from './rupert';
 import MemoriesView from './memories';
 import PurposeLearning from './learning';
 import {
-  PILLARS, COL, SDOT, PILLAR_LABEL, TODAY_POOL, QUOTES,
+  PILLARS, COL, SDOT, PILLAR_LABEL,
   WEEK_DAYS, WEEK_EVENTS, MAILS, CODING_UPDATES,
 } from './seed';
 
@@ -19,9 +19,6 @@ const TABS = [
   ['calendar', 'Calendar'], ['email', 'Email'], ['people', 'People'], ['memories', 'Memories'],
 ];
 
-const moodEmoji = (v) => { v = +v; return v <= 2 ? '😣' : v <= 4 ? '😐' : v <= 6 ? '🙂' : v <= 8 ? '😄' : '🤩'; };
-const capLevel = (v) => (v <= 3 ? 'low' : v <= 7 ? 'med' : 'high');
-const capLabel = (v) => (v <= 3 ? 'Low · rest' : v <= 7 ? 'Medium' : 'High · go');
 
 // Mike is US Eastern — NEVER use toISOString() for "today" (it's UTC; after ~8pm ET
 // that's already tomorrow). Always format/key dates in America/New_York.
@@ -91,28 +88,26 @@ const alertSnippet = (a) => {
 };
 const isRecent = (a) => a.at && (Date.now() - new Date(a.at).getTime()) < RECENT_DAYS * 86400 * 1000;
 
-// Home-page card: the last few days of alerts as tappable 1–2 line summaries.
+// The last few days of alerts as tappable 1–2 line summaries (body of a Collapse).
 function RecentAlerts({ alerts, onOpen, onAll, onSearch }) {
   const recent = alerts.filter(isRecent).slice(0, 8);
   const older = alerts.length - recent.length;
-  if (!alerts.length) return null;
   return (
-    <div className="card">
-      <div className="between"><h3 style={{ margin: 0 }}>🔔 Recent from Rupert</h3>
-        <button className="btn def" style={{ padding: '5px 10px', fontSize: 12 }} onClick={onSearch}>🔎 Search</button></div>
-      <div style={{ marginTop: 8 }}>
-        {recent.length ? recent.map((a) => (
-          <div className="loop" key={a.id} onClick={() => onOpen(a.id)} style={{ cursor: 'pointer' }}>
-            <div className="dot" style={{ background: 'var(--sky)' }} />
-            <div style={{ minWidth: 0 }}>
-              <div className="lt">{ALERT_EMOJI[a.type] || '🔔'} {a.title || a.type} <span className="dim" style={{ fontWeight: 400, fontSize: 11 }}>· {relTime(a.at)}</span></div>
-              <div className="lm">{alertSnippet(a)}</div>
-            </div>
+    <>
+      {recent.length ? recent.map((a) => (
+        <div className="loop" key={a.id} onClick={() => onOpen(a.id)} style={{ cursor: 'pointer' }}>
+          <div className="dot" style={{ background: 'var(--sky)' }} />
+          <div style={{ minWidth: 0 }}>
+            <div className="lt">{ALERT_EMOJI[a.type] || '🔔'} {a.title || a.type} <span className="dim" style={{ fontWeight: 400, fontSize: 11 }}>· {relTime(a.at)}</span></div>
+            <div className="lm">{alertSnippet(a)}</div>
           </div>
-        )) : <p className="dim" style={{ fontSize: 13 }}>Nothing in the last {RECENT_DAYS} days.</p>}
+        </div>
+      )) : <p className="dim" style={{ fontSize: 13 }}>Nothing in the last {RECENT_DAYS} days.</p>}
+      <div className="row" style={{ gap: 8, marginTop: 10 }}>
+        <button className="btn def" style={{ fontSize: 12 }} onClick={onSearch}>🔎 Search</button>
+        {older > 0 && <button className="btn def" style={{ fontSize: 12 }} onClick={onAll}>Prior alerts ({older}) →</button>}
       </div>
-      {older > 0 && <button className="btn def" style={{ marginTop: 10, fontSize: 12 }} onClick={onAll}>Prior alerts ({older}) →</button>}
-    </div>
+    </>
   );
 }
 
@@ -200,79 +195,116 @@ function Login({ onSignIn, error }) {
 }
 
 // ───────────────────────── Views ─────────────────────────
-function CheckIn({ quote, capVal, setCapVal, onSave }) {
-  const [energy, setEnergy] = useState(6);
-  const [mood, setMood] = useState(7);
-  const [journal, setJournal] = useState('');
+
+// Collapsible home-page card: one line collapsed (title + sub), tap to expand.
+function Collapse({ icon, title, sub, right, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <section>
-      <div className="quote">"{quote[0]}"<span className="by">— {quote[1]}</span></div>
-      <div className="card">
-        <h3>Morning check-in</h3>
-        <div className="field" style={{ marginBottom: 15 }}>
-          <label>Energy <span className="val" style={{ color: 'var(--amber)' }}>{energy}</span>/10</label>
-          <input type="range" min="1" max="10" value={energy} style={{ accentColor: 'var(--amber)' }} onChange={(e) => setEnergy(+e.target.value)} />
-        </div>
-        <div className="field" style={{ marginBottom: 15 }}>
-          <label>Mood <span className="val" style={{ color: 'var(--violet)' }}>{moodEmoji(mood)}</span></label>
-          <input type="range" min="1" max="10" value={mood} style={{ accentColor: 'var(--violet)' }} onChange={(e) => setMood(+e.target.value)} />
-        </div>
-        <div className="field" style={{ marginBottom: 15 }}>
-          <label>Capacity <span className="val" style={{ color: 'var(--sky)' }}>{capLabel(capVal)}</span> <span className="dim" style={{ fontWeight: 500 }}>— sets how full "Today" gets</span></label>
-          <input type="range" min="1" max="10" value={capVal} style={{ accentColor: 'var(--sky)' }} onChange={(e) => setCapVal(+e.target.value)} />
-        </div>
-        <div className="field">
-          <label>Journal — reflections on today, or yesterday</label>
-          <textarea placeholder="What's on your mind? What went well yesterday?…" value={journal} onChange={(e) => setJournal(e.target.value)} />
-        </div>
-        <button className="btn app" style={{ marginTop: 13 }} onClick={() => onSave({ energy, mood, capacity: capVal, journal })}>Save &amp; see today →</button>
+    <div className="card">
+      <div className="between" style={{ cursor: 'pointer', alignItems: 'center', gap: 8 }} onClick={() => setOpen(!open)}>
+        <h3 style={{ margin: 0 }}>{icon} {title}</h3>
+        <span className="dim" style={{ fontSize: 12, flex: '0 0 auto' }}>{right}{right ? ' ' : ''}{open ? '▾' : '▸'}</span>
       </div>
-      <p className="banner">Widgets rotate day to day so the ritual stays fresh.</p>
-    </section>
+      {!open && sub && <div className="lm" style={{ marginTop: 6, cursor: 'pointer' }} onClick={() => setOpen(true)}>{sub}</div>}
+      {open && <div style={{ marginTop: 10 }}>{children}</div>}
+    </div>
   );
 }
 
-function Today({ capVal, data, onOpenAlert, onAllAlerts, onSearchAlerts }) {
-  const n = capLevel(capVal) === 'high' ? 10 : capLevel(capVal) === 'med' ? 4 : 0;
+// ── Today engine (no check-in — capacity is assumed: 4-5 items/day) ──
+const DELAYS = [['1 day', 1], ['1 week', 7], ['1 month', 30]];
+
+// Daily roll-forward: sleeping delays stay hidden, due delays resurface,
+// yesterday's done/untouched items drop, fresh items come from active plans.
+function generateTodayItems(prev, plans, today) {
+  const old = prev || [];
+  const kept = [];
+  for (const t of old) {
+    if (t.status === 'delayed' && t.until && t.until > today) kept.push(t);
+    else if (t.status === 'delayed' && t.until && t.until <= today) kept.push({ ...t, status: 'pending', until: null });
+  }
+  const titles = new Set(old.map((t) => t.title));
+  const visible = kept.filter((t) => t.status === 'pending').length;
+  const active = (plans || []).filter((p) => p.status === 'active');
+  const fresh = [];
+  outer: for (let round = 0; round < 5; round++) {
+    for (const p of active) {
+      const open = (p.stages || []).flatMap((s) => s.tasks || []).filter((x) => !x.done);
+      const task = open[round];
+      if (!task || titles.has(task.text)) continue;
+      titles.add(task.text);
+      fresh.push({ id: 'td' + Date.now() + '_' + fresh.length, title: task.text, why: p.title, pk: p.pk, planId: p.id, status: 'pending', until: null });
+      if (visible + fresh.length >= 5) break outer;
+    }
+  }
+  return [...kept, ...fresh];
+}
+
+function TodayItemRow({ t, onDone, onDelay }) {
+  const [menu, setMenu] = useState(false);
+  const done = t.status === 'done';
+  return (
+    <div className="loop" style={{ alignItems: 'center' }}>
+      <div className="dot" style={{ background: `var(${COL[t.pk] || '--teal'})` }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="lt" style={done ? { textDecoration: 'line-through', opacity: .55 } : {}}>{t.title}</div>
+        {t.why && <div className="lm">{t.why}</div>}
+      </div>
+      <div className="row" style={{ gap: 6, flex: '0 0 auto', position: 'relative', alignItems: 'center' }}>
+        <button className="btn app" title={done ? 'Undo' : 'Done'} style={{ padding: '5px 11px', fontSize: 12 }} onClick={() => onDone(t.id)}>{done ? '↩︎' : '✓'}</button>
+        {!done && <button className="btn def" title="Delay" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => setMenu(!menu)}>⏰</button>}
+        {menu && (
+          <div style={{ position: 'absolute', right: 0, top: '108%', zIndex: 60, background: 'var(--panel2)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 6px 18px rgba(0,0,0,.4)' }}>
+            {DELAYS.map(([label, days]) => (
+              <button key={days} className="btn def" style={{ display: 'block', width: '100%', border: 'none', borderRadius: 0, textAlign: 'left', fontSize: 12, whiteSpace: 'nowrap' }}
+                onClick={() => { setMenu(false); onDelay(t.id, days); }}>+ {label}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem }) {
   const brief = data && data.todayBrief && data.todayBrief.text;
   const alerts = (data && data.alerts) || [];
+  const items = (data && data.todayItems ? data.todayItems : []).filter((t) => t.status !== 'delayed');
+  const openCount = items.filter((t) => t.status === 'pending').length;
+  const briefSub = brief ? (brief.split('\n').map((l) => l.trim()).filter((l) => l && !/^good morning/i.test(l))[0] || '').slice(0, 90) : '';
+  const latest = alerts[0];
+
   return (
     <section>
+      {/* 🎯 Today — the action center, open by default */}
+      <Collapse icon="🎯" title="Today" right={openCount ? `${openCount} open` : ''} defaultOpen
+        sub={items.length ? items.filter((t) => t.status === 'pending').map((t) => t.title).join(' · ').slice(0, 90) : null}>
+        {items.length ? items.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} />)
+          : <p className="dim" style={{ fontSize: 13 }}>Nothing queued yet — activate a plan in Planning and the daily list builds itself from its open steps.</p>}
+        <p className="dim" style={{ fontSize: 11, marginTop: 10, marginBottom: 0 }}>4–5 things a day. ✓ done · ⏰ delay (1 day / 1 week / 1 month — it comes back on its date).</p>
+      </Collapse>
+
+      {/* ☀️ Brief — collapsed to its first meaningful line */}
       {brief && (
-        <div className="card" style={{ borderLeft: '3px solid var(--teal)', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}>
-          <h3>☀️ Rupert's morning brief</h3>
-          <Linkified text={brief} />
-        </div>
+        <Collapse icon="☀️" title="Rupert's brief" sub={briefSub} right={data.todayBrief.date || ''}>
+          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}><Linkified text={brief} /></div>
+        </Collapse>
       )}
-      <RecentAlerts alerts={alerts} onOpen={onOpenAlert} onAll={onAllAlerts} onSearch={onSearchAlerts} />
-      {/* Until alert history flows from the mini scripts, fall back to the single contentFeed card. */}
+
+      {/* 🔔 Alerts — collapsed to the newest one */}
+      {alerts.length > 0 && (
+        <Collapse icon="🔔" title="From Rupert" right={relTime(latest.at)}
+          sub={`${ALERT_EMOJI[latest.type] || '🔔'} ${latest.title || latest.type} — ${alertSnippet(latest)}`.slice(0, 95)}>
+          <RecentAlerts alerts={alerts} onOpen={onOpenAlert} onAll={onAllAlerts} onSearch={onSearchAlerts} />
+        </Collapse>
+      )}
+      {/* Fallback while alert history is still empty */}
       {!alerts.length && data && data.contentFeed && data.contentFeed.text && (
-        <div className="card" style={{ borderLeft: '3px solid var(--sky)', whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}>
-          <div className="between"><h3 style={{ margin: 0 }}>{data.contentFeed.title || 'From Rupert'}</h3>
-            {data.contentFeed.at && <span className="dim" style={{ fontSize: 11 }}>{relTime(data.contentFeed.at)}</span>}</div>
-          <div style={{ marginTop: 8 }}><Linkified text={data.contentFeed.text} /></div>
-        </div>
+        <Collapse icon="📬" title={data.contentFeed.title || 'From Rupert'} right={relTime(data.contentFeed.at)}
+          sub={String(data.contentFeed.text).split('\n').filter((l) => l.trim())[0]?.slice(0, 90)}>
+          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}><Linkified text={data.contentFeed.text} /></div>
+        </Collapse>
       )}
-      <div className="card">
-        <div className="between"><h3 style={{ margin: 0 }}>Today · tuned to your capacity</h3>
-          <span className="pill" style={{ background: 'rgba(148,163,184,.15)', color: 'var(--mut)' }}>{capLabel(capVal)}</span></div>
-        <div style={{ marginTop: 10 }}>
-          {n === 0 ? (
-            <div className="loop"><div className="dot" style={{ background: 'var(--violet)' }} /><div>
-              <div className="lt">Low-capacity day — protect your energy.</div>
-              <div className="lm">Nothing on the list. Rest, recover, be kind to yourself. 💛</div></div></div>
-          ) : TODAY_POOL.slice(0, n).map((p, i) => (
-            <div className="loop" key={i}><div className="dot" style={{ background: p.c }} /><div>
-              <div className="lt">{p.t}</div><div className="lm">{p.m}</div></div></div>
-          ))}
-        </div>
-      </div>
-      <div className="card">
-        <h3>Next on your calendar</h3>
-        <div className="loop"><div className="dot" style={{ background: 'var(--violet)' }} /><div><div className="lt">10:30 — Triad client block (consulting)</div><div className="lm">Purpose · 2 hrs</div></div></div>
-        <div className="loop"><div className="dot" style={{ background: 'var(--emerald)' }} /><div><div className="lt">5:30 — Zone-2 ride</div><div className="lm">Health · proposed by Body Coach, you confirmed</div></div></div>
-        <div className="loop"><div className="dot" style={{ background: 'var(--rose)' }} /><div><div className="lt">7:00 — Dinner with Adam</div><div className="lm">Relationships</div></div></div>
-      </div>
     </section>
   );
 }
@@ -581,7 +613,6 @@ export default function App() {
     } catch { return 'home'; }
   });
   const [pillar, setPillar] = useState(null);
-  const [capVal, setCapVal] = useState(5);
   const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
   const [rupertOpen, setRupertOpen] = useState(false);
   const [rupertSeed, setRupertSeed] = useState('');
@@ -591,16 +622,26 @@ export default function App() {
     setPeacockPop(true); setTimeout(() => setPeacockPop(false), 850);
   };
 
-  const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
   const {
-    data, resolveProposal, saveCheckin,
+    data, loaded, resolveProposal,
     activatePlan, setPlanStatus, toggleTask, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken,
     setAlertFeedback, deleteAlert,
+    setTodayItems, markTodayDone, delayTodayItem,
   } = useLifeData(user);
+
+  // Daily roll-forward of the Today list (client fallback — cron-brief also does this
+  // server-side; whoever runs first today wins via the todayItemsDate guard).
+  useEffect(() => {
+    if (!FIREBASE_READY || !user || !loaded) return;
+    const today = easternYMD();
+    if (data.todayItemsDate === today) return;
+    setTodayItems(generateTodayItems(data.todayItems, data.plans, today), today);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loaded, data.todayItemsDate]);
 
   // Alert navigation: openAlertId = a single alert's page; alertsOpen = the
   // searchable full-history view ('search' auto-focuses the search box).
@@ -705,7 +746,6 @@ export default function App() {
   const goTab = (t) => { setPillar(null); setOpenAlertId(null); setAlertsOpen(null); setTab(t); };
   const openAlert = data.alerts ? data.alerts.find((a) => a.id === openAlertId) : null;
 
-  const onSaveCheckin = (c) => { saveCheckin({ ...c, date: easternYMD(now) }); };
 
   return (
     <div className="wrap">
@@ -782,7 +822,7 @@ export default function App() {
         <>
           {tab === 'home' && (
             <>
-              <Today capVal={capVal} data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} />
+              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} />
               {FIREBASE_READY && (
                 <div className="locrow">
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>
@@ -790,7 +830,6 @@ export default function App() {
                   {!locMsg && data.location && <span className="dim" style={{ fontSize: 12 }}>last: {data.location.place || `${data.location.lat}, ${data.location.lng}`} · {relTime(data.location.at)}</span>}
                 </div>
               )}
-              <CheckIn quote={quote} capVal={capVal} setCapVal={setCapVal} onSave={onSaveCheckin} />
             </>
           )}
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
