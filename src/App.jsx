@@ -111,8 +111,26 @@ function RecentAlerts({ alerts, onOpen, onAll, onSearch }) {
   );
 }
 
+// Per-type mute toggles — producers (crons + mini scripts) skip muted types.
+function AlertPrefs({ prefs, setPref }) {
+  const p = { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, ...(prefs || {}) };
+  return (
+    <div className="card">
+      <div className="subhead" style={{ marginTop: 0 }}>Notification types <span className="dim" style={{ textTransform: 'none', fontWeight: 500 }}>· tap to mute/unmute</span></div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+        {ALERT_TYPES.filter(([k]) => k !== 'all').map(([k, label, em]) => (
+          <button key={k} className="pill" onClick={() => setPref(k, !p[k])}
+            style={{ cursor: 'pointer', border: '1px solid var(--line)', background: p[k] ? 'var(--teal)' : 'var(--panel2)', color: p[k] ? '#04201c' : 'var(--mut)', opacity: p[k] ? 1 : .7 }}>
+            {em} {label} {p[k] ? '' : '🔇'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Full history: search + type filter, tap an alert to open it.
-function AlertsView({ alerts, onOpen, onBack, autoFocusSearch }) {
+function AlertsView({ alerts, onOpen, onBack, autoFocusSearch, prefs, setPref }) {
   const [q, setQ] = useState('');
   const [type, setType] = useState('all');
   const inputRef = useRef(null);
@@ -148,19 +166,76 @@ function AlertsView({ alerts, onOpen, onBack, autoFocusSearch }) {
           )) : <p className="dim" style={{ fontSize: 13 }}>No alerts match.</p>}
         </div>
       </div>
+      <AlertPrefs prefs={prefs} setPref={setPref} />
     </section>
   );
 }
 
-// One alert, full screen: read, follow links, rate it, delete it, ask Rupert.
-function AlertDetail({ alert: a, onBack, onFeedback, onDelete, openRupert }) {
+// ───────────────────────── Global search ─────────────────────────
+// One box across plans, tasks, people, memories, documents, and alerts.
+function SearchView({ data, onBack, onOpenAlert, goTab }) {
+  const [q, setQ] = useState('');
+  const inputRef = useRef(null);
+  useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
+  const ql = q.trim().toLowerCase();
+  const has = (s) => String(s || '').toLowerCase().includes(ql);
+
+  const hits = [];
+  if (ql.length >= 2) {
+    (data.plans || []).forEach((p) => {
+      if (has(p.title) || has(p.note)) hits.push({ icon: '🗺️', kind: 'Plan', title: p.title, sub: `${PILLAR_LABEL[p.pk] || ''} · ${p.status}`, go: () => goTab('planning') });
+      (p.stages || []).forEach((s) => (s.tasks || []).forEach((t) => {
+        if (has(t.text)) hits.push({ icon: t.done ? '✅' : '☑️', kind: 'Step', title: t.text, sub: p.title, go: () => goTab('planning') });
+      }));
+    });
+    (data.todayItems || []).forEach((t) => { if (has(t.title)) hits.push({ icon: '🎯', kind: 'Today', title: t.title, sub: t.status + (t.until ? ' until ' + t.until : ''), go: () => goTab('home') }); });
+    Object.entries(data.people || {}).forEach(([g, list]) => (list || []).forEach((pp) => {
+      if (has(pp.name) || has(pp.meta)) hits.push({ icon: '👤', kind: 'Person', title: pp.name, sub: pp.meta || g, go: () => goTab('people') });
+    }));
+    (data.memories || []).forEach((m) => { if (has(m.text)) hits.push({ icon: '📸', kind: 'Memory', title: m.text.slice(0, 70), sub: m.date || '', go: () => goTab('memories') }); });
+    (data.documents || []).forEach((dd) => { if (has(dd.title) || has(dd.body)) hits.push({ icon: '📄', kind: 'Document', title: dd.title, sub: '', go: () => goTab('memories') }); });
+    (data.alerts || []).forEach((a) => { if (has(a.title) || has(a.text)) hits.push({ icon: ALERT_EMOJI[a.type] || '🔔', kind: 'Alert', title: a.title || a.type, sub: relTime(a.at), go: () => onOpenAlert(a.id) }); });
+    (data.goodTime || []).forEach((g) => { if (has(g.activity)) hits.push({ icon: '⚡', kind: 'Energy log', title: g.activity, sub: `energy ${g.energy}`, go: () => goTab('planning') }); });
+  }
+
+  return (
+    <section>
+      <button className="backbtn" onClick={onBack}>‹ back</button>
+      <div className="card">
+        <h3>🔎 Search everything</h3>
+        <input ref={inputRef} type="text" placeholder="Plans, steps, people, memories, documents, alerts…" value={q} onChange={(e) => setQ(e.target.value)}
+          style={{ width: '100%', boxSizing: 'border-box', marginTop: 8 }} />
+        <div style={{ marginTop: 12 }}>
+          {ql.length < 2 ? <p className="dim" style={{ fontSize: 13 }}>Type at least 2 characters.</p>
+            : hits.length ? hits.slice(0, 30).map((h, i) => (
+              <div className="loop" key={i} onClick={h.go} style={{ cursor: 'pointer' }}>
+                <div className="dot" style={{ background: 'var(--teal)' }} />
+                <div style={{ minWidth: 0 }}>
+                  <div className="lt">{h.icon} {h.title} <span className="pill" style={{ background: 'rgba(148,163,184,.14)', color: 'var(--mut)', marginLeft: 6 }}>{h.kind}</span></div>
+                  {h.sub && <div className="lm">{h.sub}</div>}
+                </div>
+              </div>
+            )) : <p className="dim" style={{ fontSize: 13 }}>No matches.</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// One alert, full screen: read, follow links, rate it, act on it, delete it.
+const ALERT_PILLAR = { recipe: 'health', mealprep: 'health', podcast: 'purpose', travel: 'fun', brief: 'purpose' };
+
+function AlertDetail({ alert: a, onBack, onFeedback, onDelete, openRupert, addTodayItem, addPlan }) {
+  const [actMsg, setActMsg] = useState('');
   if (!a) return null;
+  const pk = ALERT_PILLAR[a.type] || 'fun';
   const fbBtn = (fb, em, label) => (
     <button className="btn def" onClick={() => onFeedback(a.id, fb)}
       style={a.feedback === fb ? { background: 'var(--teal)', color: '#04201c', borderColor: 'var(--teal)' } : {}}>
       {em} {label}
     </button>
   );
+  const actLabel = { recipe: 'Cook tonight', mealprep: 'Do the meal-prep', podcast: 'Listen on the commute', travel: 'Look into this trip' }[a.type] || (a.title || a.type);
   return (
     <section className="focusview">
       <button className="backbtn" onClick={onBack}>‹ back</button>
@@ -172,9 +247,14 @@ function AlertDetail({ alert: a, onBack, onFeedback, onDelete, openRupert }) {
         <div style={{ marginTop: 10 }}><Linkified text={a.text} /></div>
       </div>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn app" onClick={() => { addTodayItem({ title: actLabel, why: a.title || 'from Rupert', pk }); setActMsg('Added to Today ✓'); }}>➕ Add to Today</button>
+        <button className="btn def" onClick={() => { addPlan(a.title || actLabel, pk, String(a.text || '').slice(0, 500)); setActMsg('Saved to Plans (someday) ✓'); }}>📌 Save as plan</button>
+        <button className="btn def" onClick={() => openRupert(`About your "${a.title || a.type}" alert from ${relTime(a.at)} — tell me more.`)}>Ask Rupert</button>
+      </div>
+      {actMsg && <p className="dim" style={{ fontSize: 12, margin: '6px 2px' }}>{actMsg}</p>}
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
         {fbBtn('up', '👍', 'Helpful')}
         {fbBtn('down', '👎', 'Not helpful')}
-        <button className="btn app" onClick={() => openRupert(`About your "${a.title || a.type}" alert from ${relTime(a.at)} — tell me more.`)}>Ask Rupert</button>
         <button className="btn def" onClick={() => { onDelete(a.id); onBack(); }} style={{ color: 'var(--rose)' }}><Trash2 size={14} style={{ verticalAlign: '-2px' }} /> Delete</button>
       </div>
       <p className="banner">👍/👎 teaches Rupert what's worth sending — he reads your ratings before composing new content.</p>
@@ -630,7 +710,8 @@ export default function App() {
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken,
     setAlertFeedback, deleteAlert,
-    setTodayItems, markTodayDone, delayTodayItem,
+    setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
+    setAlertPref,
   } = useLifeData(user);
 
   // Daily roll-forward of the Today list (client fallback — cron-brief also does this
@@ -647,6 +728,7 @@ export default function App() {
   // searchable full-history view ('search' auto-focuses the search box).
   const [openAlertId, setOpenAlertId] = useState(null);
   const [alertsOpen, setAlertsOpen] = useState(null); // null | 'list' | 'search'
+  const [searchOpen, setSearchOpen] = useState(false); // global search
 
   // A tapped notification can deep-link to a focused view (?focus=brief|content)
   // or open Rupert (?rupert=1). Pillars still come in via ?view=<pillar>.
@@ -743,7 +825,7 @@ export default function App() {
 
   const now = new Date();
   const openPillar = (k) => { setPillar(k); };
-  const goTab = (t) => { setPillar(null); setOpenAlertId(null); setAlertsOpen(null); setTab(t); };
+  const goTab = (t) => { setPillar(null); setOpenAlertId(null); setAlertsOpen(null); setSearchOpen(false); setTab(t); };
   const openAlert = data.alerts ? data.alerts.find((a) => a.id === openAlertId) : null;
 
 
@@ -795,6 +877,7 @@ export default function App() {
       {FIREBASE_READY && (
         <div className="refreshbar">
           <span className="upd">{data.refreshedAt ? `Updated ${relTime(data.refreshedAt)}` : 'Pull down or tap Refresh to update'}</span>
+          <button className="btn def refbtn" onClick={() => setSearchOpen(true)} title="Search everything" style={{ marginRight: 6 }}>🔎</button>
           <button className="btn def refbtn" onClick={doRefresh} disabled={refreshing} title="Have Rupert pull fresh content + ideas">
             <RefreshCw size={14} className={refreshing ? 'spin' : ''} /> {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -813,9 +896,11 @@ export default function App() {
       {focus ? (
         <FocusView focus={focus} data={data} openRupert={openRupert} onOpenApp={() => { setFocus(null); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
       ) : openAlert ? (
-        <AlertDetail alert={openAlert} onBack={() => setOpenAlertId(null)} onFeedback={setAlertFeedback} onDelete={deleteAlert} openRupert={openRupert} />
+        <AlertDetail alert={openAlert} onBack={() => setOpenAlertId(null)} onFeedback={setAlertFeedback} onDelete={deleteAlert} openRupert={openRupert} addTodayItem={addTodayItem} addPlan={addPlan} />
+      ) : searchOpen ? (
+        <SearchView data={data} onBack={() => setSearchOpen(false)} onOpenAlert={(id) => { setSearchOpen(false); setOpenAlertId(id); }} goTab={goTab} />
       ) : alertsOpen ? (
-        <AlertsView alerts={data.alerts || []} onOpen={setOpenAlertId} onBack={() => setAlertsOpen(null)} autoFocusSearch={alertsOpen === 'search'} />
+        <AlertsView alerts={data.alerts || []} onOpen={setOpenAlertId} onBack={() => setAlertsOpen(null)} autoFocusSearch={alertsOpen === 'search'} prefs={data.alertPrefs} setPref={setAlertPref} />
       ) : pillar ? (
         <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('home')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
       ) : (

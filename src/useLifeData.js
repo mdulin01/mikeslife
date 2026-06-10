@@ -28,6 +28,8 @@ const initial = () => ({
   // Regenerated daily (client fallback + cron-brief); delayed items resurface on their date.
   todayItems: [],      // [{ id, title, why, pk, planId?, status: 'pending'|'done'|'delayed', until: null|'YYYY-MM-DD' }]
   todayItemsDate: null,
+  // Per-type alert mutes — producers (crons + mini scripts) skip muted types.
+  alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true },
 });
 
 // Native LifeOS data. Persists to Firestore doc lifeos/{uid} when configured;
@@ -146,12 +148,12 @@ export function useLifeData(user) {
     }, ['fcmToken', 'fcmTokens', 'fcmUpdatedAt']);
   }, [mutate]);
 
-  const addPlan = useCallback((title, pk = 'fun') => {
+  const addPlan = useCallback((title, pk = 'fun', note = '') => {
     const t = (title || '').trim();
     if (!t) return;
     mutate((p) => ({
       ...p,
-      plans: [{ id: 'p' + Date.now(), title: t, note: '', pk, type: 'generic', status: 'someday', stages: [] }, ...p.plans],
+      plans: [{ id: 'p' + Date.now(), title: t, note: (note || '').trim(), pk, type: 'generic', status: 'someday', stages: [] }, ...p.plans],
     }), ['plans']);
   }, [mutate]);
 
@@ -229,6 +231,20 @@ export function useLifeData(user) {
     }), ['todayItems']);
   }, [mutate]);
 
+  // One-tap from an alert (or anywhere): put a concrete item on today's list.
+  const addTodayItem = useCallback((item) => {
+    const title = (item.title || '').trim();
+    if (!title) return;
+    mutate((p) => ({
+      ...p,
+      todayItems: [...(p.todayItems || []), { id: 'td' + Date.now(), title, why: item.why || '', pk: item.pk || 'fun', status: 'pending', until: null }],
+    }), ['todayItems']);
+  }, [mutate]);
+
+  const setAlertPref = useCallback((type, on) => {
+    mutate((p) => ({ ...p, alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, ...(p.alertPrefs || {}), [type]: on } }), ['alertPrefs']);
+  }, [mutate]);
+
   const delayTodayItem = useCallback((id, days) => {
     const until = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
       .format(new Date(Date.now() + days * 86400 * 1000));
@@ -259,6 +275,7 @@ export function useLifeData(user) {
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken,
     setAlertFeedback, deleteAlert,
-    setTodayItems, markTodayDone, delayTodayItem,
+    setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
+    setAlertPref,
   };
 }

@@ -59,6 +59,10 @@ export default async function handler(req, res) {
     const d = (await ref.get()).data() || {};
     const today = easternYMD();
 
+    if (d.alertPrefs && d.alertPrefs.brief === false) {
+      return res.status(200).json({ ok: true, skipped: 'briefs muted in app preferences' });
+    }
+
     // Idempotency — the mini (or an earlier invocation) may have already sent it.
     const briefToday = (d.alerts || []).some((a) => a.type === 'brief' && String(a.at || '').length && easternYMD(new Date(a.at)) === today);
     if (briefToday || (d.todayBrief && d.todayBrief.date === today)) {

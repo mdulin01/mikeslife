@@ -42,6 +42,10 @@ export default async function handler(req, res) {
     const d = (await ref.get()).data() || {};
     const today = easternYMD();
 
+    if (d.alertPrefs && d.alertPrefs[slot] === false) {
+      return res.status(200).json({ ok: true, skipped: `${slot} muted in app preferences` });
+    }
+
     // Idempotency — the mini may have already sent this slot today.
     const dupe = (d.alerts || []).some((a) => a.type === slot && a.at && easternYMD(new Date(a.at)) === today);
     if (dupe) return res.status(200).json({ ok: true, skipped: `${slot} already sent today` });
