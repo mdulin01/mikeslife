@@ -5,7 +5,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 
 const strip = (html) => html
   .replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<script[\s\S]*?<\/script>/gi, ' ')
-  .replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#847;|‌|͏|‌/g, ' ')
+  .replace(/<[^>]+>/g, ' ').replace(/&zwnj;|&#8204;|&nbsp;|&#847;|&#8199;|&#65279;|‌|͏|‌|\u200c|\u200b|\ufeff/g, ' ')
   .replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
   .replace(/\s+/g, ' ').trim();
 
