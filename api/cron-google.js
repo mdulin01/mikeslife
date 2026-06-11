@@ -13,7 +13,7 @@ const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const EASTERN = 'America/New_York';
 
 const etParts = (dt) => {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: EASTERN, weekday: 'short', hour: 'numeric', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(dt).map((x) => [x.type, x.value]));
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: EASTERN, weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(dt).map((x) => [x.type, x.value]));
   return p;
 };
 const DAY_IDX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
     const cals = (await gFetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=10', at)).items || [];
     const weekEvents = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
     const calLines = [];
-    for (const cal of cals.filter((c) => c.selected !== false).slice(0, 6)) {
+    for (const cal of cals.slice(0, 10)) {
       const ev = await gFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?` + new URLSearchParams({
         timeMin: now.toISOString(), timeMax: in7.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '25',
       }), at);
@@ -93,10 +93,10 @@ export default async function handler(req, res) {
         const p = etParts(dt);
         const idx = DAY_IDX[p.weekday];
         if (idx === undefined) continue;
-        const time = e.start?.dateTime ? `${p.hour}:00 ` : '';
+        const time = e.start?.dateTime ? `${p.hour}:${p.minute} ` : '';
         // Firestore can't store arrays-in-arrays — store objects; the app converts to tuples.
         if (weekEvents[idx].length < 5) weekEvents[idx].push({ t: (time + e.summary).slice(0, 28), c: colorFor(cal.summary || '', e.summary) });
-        calLines.push(`${p.weekday} ${p.month}/${p.day}${e.start?.dateTime ? ' ' + p.hour + ':00' : ''} — ${e.summary} [${cal.summary || 'cal'}]`);
+        calLines.push(`${p.weekday} ${p.month}/${p.day}${e.start?.dateTime ? ' ' + p.hour + ':' + p.minute : ''} — ${e.summary} [${cal.summary || 'cal'}]`);
       }
     }
 
