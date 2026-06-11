@@ -35,20 +35,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .ptile .pst{font-size:11px;color:var(--dim);margin-top:2px}
 .ptile .badge{position:absolute;top:10px;right:10px;min-width:18px;height:18px;border-radius:9px;background:var(--c);color:#04101a;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 5px}
 .ptile .okdot{position:absolute;top:12px;right:12px;width:8px;height:8px;border-radius:50%;background:var(--emerald);opacity:.7}
-/* mobile: pillars become a floating bottom nav bar (one top menu, pillars on the bottom) */
+/* mobile: pillars = compact status row at the TOP (the floating dock owns the bottom) */
 @media(max-width:640px){
-  .hero{position:fixed;left:0;right:0;bottom:0;z-index:50;margin:0;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));background:rgba(10,15,29,.97);backdrop-filter:blur(10px);border-top:1px solid var(--line);border-radius:0}
-  .ptile{background:transparent;border:none;padding:7px 2px;text-align:center}
-  .ptile:before{display:none}
-  .ptile.sel{box-shadow:none}
-  .ptile.sel .pnm{color:var(--txt)}
-  .ptile.sel .em{transform:scale(1.12)}
-  .ptile .pnm{font-size:10px;font-weight:600}
+  .hero{gap:6px;margin:10px 0 12px}
+  .ptile{padding:8px 3px;text-align:center}
+  .ptile .pnm{font-size:9.5px;font-weight:600}
   .ptile .pst{display:none}
-  .ptile .em{font-size:21px;display:inline-block;transition:transform .15s}
-  .ptile .badge{top:1px;right:calc(50% - 22px);min-width:15px;height:15px;font-size:9px}
-  .ptile .okdot{top:3px;right:calc(50% - 18px)}
-  .wrap{padding-bottom:86px}
+  .ptile .em{font-size:19px}
+  .ptile .badge{top:4px;right:4px;min-width:15px;height:15px;font-size:9px}
+  .ptile .okdot{top:6px;right:6px}
+  .wrap{padding-bottom:96px}
 }
 
 nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
