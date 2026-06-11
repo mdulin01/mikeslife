@@ -25,7 +25,7 @@ function slotForToday() {
   return { Mon: 'recipe', Tue: 'recipe', Wed: 'podcast', Thu: 'podcast', Fri: null, Sat: 'travel', Sun: 'mealprep' }[day] ?? null;
 }
 
-const TITLES = { podcast: '🎧 Podcasts for your commute', recipe: "🍳 Tonight's dinner ideas", mealprep: '🥗 Sunday meal-prep', travel: '✈️ Travel ideas' };
+const TITLES = { podcast: '🎧 Podcasts for your commute', recipe: "🍳 Tonight's dinner ideas", mealprep: '🥗 Sunday meal-prep', travel: '✈️ Travel ideas', ainews: '🤖 Healthcare AI news' };
 
 // ── Real recent podcast episodes via iTunes lookup + RSS (no fabricated "recent" eps) ──
 const SHOWS = [
@@ -100,8 +100,9 @@ export default async function handler(req, res) {
     if (d.alertPrefs && d.alertPrefs[slot] === false) {
       return res.status(200).json({ ok: true, skipped: `${slot} muted in app preferences` });
     }
+    const force = req.query && req.query.force === '1';
     const dupe = (d.alerts || []).some((a) => a.type === slot && a.at && easternYMD(new Date(a.at)) === today);
-    if (dupe) return res.status(200).json({ ok: true, skipped: `${slot} already sent today` });
+    if (dupe && !force) return res.status(200).json({ ok: true, skipped: `${slot} already sent today` });
 
     const fb = feedbackLines(d);
     const FB_LINE = fb.length ? `\n\nMike's ratings of past items (more like 👍, avoid like 👎): ${fb.join(' | ')}` : '';
@@ -136,6 +137,7 @@ export default async function handler(req, res) {
         podcast: 'Recommend 2-3 podcast episodes — mix AI and health/longevity — for a ~2-hour commute. Use Spotify search links: "https://open.spotify.com/search/" + words joined by %20 (letters/numbers/spaces only).',
         recipe: 'Suggest 2 dinner recipes Mike could cook tonight — healthy, high-protein, not fussy, seasonal for the current month.',
         mealprep: 'A simple Sunday meal-prep plan: 2-3 batch recipes (high-protein, healthy). Put the combined grocery list in the last item\'s "s".',
+        ainews: 'Summarize the 3 most significant recent developments in healthcare AI / precision medicine that a physician-informaticist should know (clinical AI, FDA, health systems, LLMs in medicine). One line each + why it matters. Google search link per item.',
         travel: 'Suggest 2-3 inspiring travel ideas (hiking, biking, warm places; January birthday trip and a "month in Spain" goal pending) — seasonal for the current month.'
           + (Array.isArray(d.emailSignals) && d.emailSignals.length ? ' Inbox signals: ' + JSON.stringify(d.emailSignals).slice(0, 600) : ''),
       };

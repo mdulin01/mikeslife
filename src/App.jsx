@@ -652,11 +652,14 @@ function RupertTaskStrip({ dayPlan, alerts, onOpenAlert }) {
   );
 }
 
-function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab }) {
+function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab, onPlanMore }) {
+  const [showDone, setShowDone] = useState(false);
   const brief = data && data.todayBrief && data.todayBrief.text;
   const alerts = (data && data.alerts) || [];
-  const items = (data && data.todayItems ? data.todayItems : []).filter((t) => t.status !== 'delayed');
-  const openCount = items.filter((t) => t.status === 'pending').length;
+  const all = (data && data.todayItems ? data.todayItems : []).filter((t) => t.status !== 'delayed');
+  const items = all.filter((t) => t.status === 'pending');
+  const doneItems = all.filter((t) => t.status === 'done');
+  const openCount = items.length;
   const briefSub = brief ? (brief.split('\n').map((l) => l.trim()).filter((l) => l && !/^good morning/i.test(l))[0] || '').slice(0, 90) : '';
   const latest = alerts[0];
 
@@ -666,8 +669,17 @@ function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, 
       <Collapse icon="🎯" title="Today" right={openCount ? `${openCount} open` : ''} defaultOpen
         sub={items.length ? items.filter((t) => t.status === 'pending').map((t) => t.title).join(' · ').slice(0, 90) : null}>
         {items.length ? items.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} />)
-          : <p className="dim" style={{ fontSize: 13 }}>Nothing queued yet — activate a plan in Planning and the daily list builds itself from its open steps.</p>}
-        <p className="dim" style={{ fontSize: 11, marginTop: 10, marginBottom: 0 }}>4–5 things a day. ✓ done · ⏰ delay (1 day / 1 week / 1 month — it comes back on its date).</p>
+          : <p className="dim" style={{ fontSize: 13 }}>{doneItems.length ? 'All done — strong day. 🎉' : 'Nothing queued yet — tap ➕ Plan more or run the morning check-in.'}</p>}
+        {doneItems.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <button className="btn def" style={{ fontSize: 12 }} onClick={() => setShowDone(!showDone)}>✓ {doneItems.length} done today {showDone ? '▾' : '▸'}</button>
+            {showDone && doneItems.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} />)}
+          </div>
+        )}
+        <div className="row" style={{ gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="btn def" style={{ fontSize: 12 }} onClick={onPlanMore}>➕ Plan more</button>
+          <span className="dim" style={{ fontSize: 11 }}>✓ done · ⏰ delay 1d/1w/1mo (returns on its date)</span>
+        </div>
       </Collapse>
 
       <RupertTaskStrip dayPlan={data.dayPlan} alerts={data.alerts} onOpenAlert={onOpenAlert} />
@@ -1218,7 +1230,7 @@ export default function App() {
         <>
           {tab === 'home' && (
             <>
-              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} />
+              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} />
               {FIREBASE_READY && (
                 <div className="locrow">
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>
