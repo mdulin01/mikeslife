@@ -376,7 +376,7 @@ function TodayItemRow({ t, onDone, onDelay }) {
     <div className="loop" style={{ alignItems: 'center' }}>
       <div className="dot" style={{ background: `var(${COL[t.pk] || '--teal'})` }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="lt" style={done ? { textDecoration: 'line-through', opacity: .55 } : {}}>{t.title}</div>
+        <div className="lt" style={done ? { textDecoration: 'line-through', opacity: .55 } : {}}>{t.icon ? t.icon + ' ' : ''}{t.title}</div>
         {t.why && <div className="lm">{t.why}</div>}
       </div>
       <div className="row" style={{ gap: 6, flex: '0 0 auto', position: 'relative', alignItems: 'center' }}>
@@ -443,17 +443,99 @@ const RUPERT_JOBS = [
   { kind: 'travel', label: 'Travel ideas', icon: '✈️', via: 'app', recDays: [6, 0] },
 ];
 
+// Wellness catalog — exercise FIRST, then fuel/health/social/cognitive.
+// rec(dow, fitnessContext) marks Rupert's strategic pick for the day.
+const lastGymWas = (fc) => {
+  const t = String(fc || '').toLowerCase();
+  const u = t.indexOf('upper'); const l = Math.max(t.indexOf('leg'), t.indexOf('lower'), t.indexOf('squat'));
+  if (u === -1 && l === -1) return null;
+  if (l === -1) return 'upper'; if (u === -1) return 'legs';
+  return u < l ? 'upper' : 'legs'; // entries newest-first: smaller index = more recent
+};
+const WELLNESS = [
+  { section: '🏃 Move (pick at least one)', pk: 'health', items: [
+    { id: 'w_swim', icon: '🏊', title: 'Swim', rec: (d) => [3, 6, 0].includes(d), why: d => d === 3 ? 'Wednesday — after clinic' : 'weekend swim' },
+    { id: 'w_gym_up', icon: '🏋️', title: 'Gym — upper body', rec: (d, fc) => [4, 6, 0].includes(d) && lastGymWas(fc) === 'legs', why: () => 'YMCA — alternate from last session' },
+    { id: 'w_gym_legs', icon: '🦵', title: 'Gym — legs day', rec: (d, fc) => [4, 6, 0].includes(d) && lastGymWas(fc) !== 'legs', why: () => 'YMCA — alternate from last session' },
+    { id: 'w_walk', icon: '🚶', title: 'Evening walk', rec: () => true, why: () => 'the daily anchor' },
+    { id: 'w_run', icon: '👟', title: 'Run (stretch goal)', rec: () => false, why: () => "you've been wanting more of this" },
+    { id: 'w_bike', icon: '🚴', title: 'Bike (stretch goal)', rec: () => false, why: () => "you've been wanting more of this" },
+  ]},
+  { section: '🍎 Fuel', pk: 'health', items: [
+    { id: 'n_protein', icon: '🥩', title: 'High-protein day', rec: () => true },
+    { id: 'n_hydrate', icon: '💧', title: 'Hydrate 3L', rec: () => false },
+    { id: 'n_noalc', icon: '🚫', title: 'No alcohol tonight', rec: () => false },
+  ]},
+  { section: '🫀 Health', pk: 'health', items: [
+    { id: 'h_meds', icon: '💊', title: 'Meds & supplements on schedule', rec: () => true },
+    { id: 'h_bp', icon: '🩺', title: 'Log blood pressure', rec: () => true },
+    { id: 'h_stretch', icon: '🧘', title: 'Stretch / mobility 10 min', rec: () => false },
+  ]},
+  { section: '🤝 Social', pk: 'rel', items: [
+    { id: 's_friend', icon: '💬', title: 'Text or call a friend', rec: (d) => [1, 3, 5].includes(d) },
+    { id: 's_adam', icon: '❤️', title: 'Plan something with Adam', rec: (d) => [5].includes(d) },
+    { id: 's_quiet', icon: '🤝', title: 'Reach out to someone gone quiet', rec: () => false },
+  ]},
+  { section: '🧠 Cognitive', pk: 'purpose', items: [
+    { id: 'c_read', icon: '📚', title: 'Read 30 minutes', rec: () => true },
+    { id: 'c_learn', icon: '🎓', title: 'One Learning-hub item', rec: (d) => [2, 4].includes(d) },
+    { id: 'c_puzzle', icon: '♟️', title: 'Puzzle / chess', rec: () => false },
+    { id: 'c_journal', icon: '✍️', title: 'Journal a few lines', rec: () => false },
+  ]},
+];
+
+// Drag-to-rank list (pointer-based so it works on the iPhone PWA) + ↑↓ fallback.
+function RankList({ items, setItems }) {
+  const [dragId, setDragId] = useState(null);
+  const refs = useRef({});
+  const onMove = (e) => {
+    if (!dragId) return;
+    const y = e.clientY;
+    const ids = items.map((i) => i.id);
+    const from = ids.indexOf(dragId);
+    let to = from;
+    for (const [id, el] of Object.entries(refs.current)) {
+      if (!el || id === dragId) continue;
+      const r = el.getBoundingClientRect();
+      if (y > r.top && y < r.bottom) { to = ids.indexOf(id); break; }
+    }
+    if (to !== from && to >= 0) {
+      const n = [...items]; const [m] = n.splice(from, 1); n.splice(to, 0, m); setItems(n);
+    }
+  };
+  const bump = (id, dir) => {
+    const i = items.findIndex((x) => x.id === id); const j = i + dir;
+    if (i < 0 || j < 0 || j >= items.length) return;
+    const n = [...items]; [n[i], n[j]] = [n[j], n[i]]; setItems(n);
+  };
+  return (
+    <div onPointerMove={onMove} onPointerUp={() => setDragId(null)} onPointerCancel={() => setDragId(null)}>
+      {items.map((it, i) => (
+        <div key={it.id} ref={(el) => { refs.current[it.id] = el; }} className="loop"
+          style={{ alignItems: 'center', borderRadius: 10, padding: '7px 6px', background: dragId === it.id ? 'rgba(45,212,191,.14)' : 'transparent', border: dragId === it.id ? '1px dashed var(--teal)' : '1px solid transparent' }}>
+          <span onPointerDown={(e) => { e.preventDefault(); setDragId(it.id); e.currentTarget.setPointerCapture?.(e.pointerId); }}
+            style={{ cursor: 'grab', padding: '2px 10px 2px 2px', fontSize: 18, color: 'var(--mut)', touchAction: 'none', userSelect: 'none' }} title="Drag to reorder">≡</span>
+          <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', fontWeight: 700, marginRight: 8 }}>{i + 1}</span>
+          <div className="lt" style={{ flex: 1, minWidth: 0 }}>{it.icon ? it.icon + ' ' : ''}{it.title}</div>
+          <div className="row" style={{ gap: 4, flex: '0 0 auto' }}>
+            <button className="btn def" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => bump(it.id, -1)}>↑</button>
+            <button className="btn def" style={{ padding: '2px 8px', fontSize: 12 }} onClick={() => bump(it.id, 1)}>↓</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CheckInView({ data, submitDayPlan, onDone }) {
   const today = easternYMD();
   const dow = new Date(new Date().toLocaleString('en-US', { timeZone: EASTERN })).getDay();
+  const fc = data.fitnessContext;
 
-  // Candidates: current pending items + fresh steps from active plans (up to 8). First 3 = Rupert's picks.
+  // Plan/task candidates (pending items + fresh steps from active plans).
   const initialCands = () => {
-    const out = [];
-    const seen = new Set();
-    for (const t of (data.todayItems || [])) {
-      if (t.status === 'pending' && !seen.has(t.title)) { seen.add(t.title); out.push({ ...t }); }
-    }
+    const out = []; const seen = new Set();
+    for (const t of (data.todayItems || [])) if (t.status === 'pending' && !seen.has(t.title)) { seen.add(t.title); out.push({ ...t, icon: '📌' }); }
     const active = (data.plans || []).filter((p) => p.status === 'active');
     outer: for (let round = 0; round < 5; round++) {
       for (const p of active) {
@@ -461,36 +543,44 @@ function CheckInView({ data, submitDayPlan, onDone }) {
         const task = open[round];
         if (!task || seen.has(task.text)) continue;
         seen.add(task.text);
-        out.push({ id: 'td' + Date.now() + '_' + out.length, title: task.text, why: p.title, pk: p.pk, planId: p.id, status: 'pending', until: null });
+        out.push({ id: 'td' + Date.now() + '_' + out.length, title: task.text, why: p.title, pk: p.pk, planId: p.id, status: 'pending', until: null, icon: '📌' });
         if (out.length >= 8) break outer;
       }
     }
     return out;
   };
-
   const [cands] = useState(initialCands);
-  const [checked, setChecked] = useState(() => cands.slice(0, 3).map((c) => c.id));
+
+  // One unified ordered selection (exercise recs first — health is the priority).
+  const wellnessItem = (w, sec) => ({ id: w.id, title: w.title, icon: w.icon, why: w.why ? w.why(dow) : sec.section.replace(/^[^ ]+ /, ''), pk: sec.pk, status: 'pending', until: null });
+  const [picked, setPicked] = useState(() => {
+    const out = [];
+    for (const sec of WELLNESS) for (const w of sec.items) if (w.rec(dow, fc)) out.push(wellnessItem(w, sec));
+    for (const c of cands.slice(0, 2)) out.push(c);
+    return out;
+  });
   const [jobs, setJobs] = useState(() => RUPERT_JOBS.filter((j) => j.recDays.includes(dow)).map((j) => j.kind));
   const [busy, setBusy] = useState(false);
 
-  const toggle = (id) => setChecked((c) => c.includes(id) ? c.filter((x) => x !== id) : [...c, id]);
-  const move = (id, dir) => setChecked((c) => {
-    const i = c.indexOf(id); const j = i + dir;
-    if (i < 0 || j < 0 || j >= c.length) return c;
-    const n = [...c]; [n[i], n[j]] = [n[j], n[i]]; return n;
-  });
+  const isPicked = (id) => picked.some((p) => p.id === id);
+  const togglePick = (item) => setPicked((c) => isPicked(item.id) ? c.filter((x) => x.id !== item.id) : [...c, item]);
+
+  const Chip = ({ on, rec, onClick, children }) => (
+    <button onClick={onClick} className="pill"
+      style={{ cursor: 'pointer', border: '1px solid ' + (on ? 'var(--teal)' : 'var(--line)'), background: on ? 'rgba(45,212,191,.18)' : 'var(--panel2)', color: on ? 'var(--teal)' : 'var(--mut)', padding: '7px 11px', fontSize: 13 }}>
+      {rec && '⭐ '}{children}{on && ' ✓'}
+    </button>
+  );
 
   const submit = async () => {
     setBusy(true);
-    const ranked = checked.map((id) => cands.find((c) => c.id === id)).filter(Boolean);
     const delayed = (data.todayItems || []).filter((t) => t.status === 'delayed');
+    const items = picked.map((p) => ({ id: p.id, title: p.title, why: p.why || '', pk: p.pk || 'health', planId: p.planId || null, status: 'pending', until: null, icon: p.icon || null }));
     const rupertTasks = RUPERT_JOBS.filter((j) => jobs.includes(j.kind)).map((j) => ({ id: 'rt' + Date.now() + '_' + j.kind, kind: j.kind, label: j.label, icon: j.icon, via: j.via, status: 'pending' }));
-    submitDayPlan([...ranked, ...delayed], rupertTasks, today);
+    submitDayPlan([...items, ...delayed], rupertTasks, today);
     try {
       const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
-      if (token && jobs.length) {
-        await fetch('/api/run-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: token, tasks: jobs }) });
-      }
+      if (token && jobs.length) await fetch('/api/run-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: token, tasks: jobs }) });
     } catch (e) { console.warn('run-tasks', e); }
     setBusy(false);
     onDone();
@@ -498,51 +588,46 @@ function CheckInView({ data, submitDayPlan, onDone }) {
 
   return (
     <section className="focusview">
-      <div className="card" style={{ borderLeft: '3px solid var(--teal)' }}>
-        <h3>🦚 Plan your day</h3>
-        <p className="dim" style={{ fontSize: 12, marginTop: 4 }}>Check what YOU want done today (⭐ = Rupert recommends) — then rank with ↑↓.</p>
-        {cands.map((c, idx) => {
-          const isChecked = checked.includes(c.id);
-          const rank = checked.indexOf(c.id);
-          return (
-            <div className="loop" key={c.id} style={{ alignItems: 'center', background: isChecked ? 'rgba(45,212,191,.06)' : 'transparent', borderRadius: 10, padding: '6px 8px' }}>
-              <input type="checkbox" checked={isChecked} onChange={() => toggle(c.id)} style={{ accentColor: 'var(--teal)', width: 17, height: 17, flex: '0 0 auto' }} />
-              <div style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
-                <div className="lt">{idx < 3 && <span title="Rupert recommends">⭐ </span>}{c.title}</div>
-                {c.why && <div className="lm">{c.why}</div>}
-              </div>
-              {isChecked && (
-                <div className="row" style={{ gap: 4, flex: '0 0 auto', alignItems: 'center' }}>
-                  <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', fontWeight: 700 }}>{rank + 1}</span>
-                  <button className="btn def" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => move(c.id, -1)}>↑</button>
-                  <button className="btn def" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => move(c.id, 1)}>↓</button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {!cands.length && <p className="dim" style={{ fontSize: 13 }}>No candidates — activate a plan in Planning first.</p>}
+      {WELLNESS.map((sec) => (
+        <div className="card" key={sec.section} style={sec.section.startsWith('🏃') ? { borderLeft: '3px solid var(--emerald)' } : {}}>
+          <h3 style={{ marginBottom: 8 }}>{sec.section}</h3>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            {sec.items.map((w) => (
+              <Chip key={w.id} on={isPicked(w.id)} rec={w.rec(dow, fc)} onClick={() => togglePick(wellnessItem(w, sec))}>{w.icon} {w.title}</Chip>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div className="card">
+        <h3 style={{ marginBottom: 8 }}>📌 Tasks & plans</h3>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          {cands.length ? cands.map((c, i) => (
+            <Chip key={c.id} on={isPicked(c.id)} rec={i < 2} onClick={() => togglePick(c)}>{c.title.slice(0, 40)}</Chip>
+          )) : <p className="dim" style={{ fontSize: 13 }}>No open plan steps — activate a plan in Planning.</p>}
+        </div>
       </div>
 
       <div className="card" style={{ borderLeft: '3px solid var(--violet)' }}>
-        <h3>🛠️ Rupert's assignments</h3>
-        <p className="dim" style={{ fontSize: 12, marginTop: 4 }}>What should Rupert work on today? (⭐ = his usual for {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow]}s · 📡 = delivered via Telegram)</p>
-        {RUPERT_JOBS.map((j) => {
-          const on = jobs.includes(j.kind);
-          const rec = j.recDays.includes(dow);
-          return (
-            <div className="loop" key={j.kind} style={{ alignItems: 'center', background: on ? 'rgba(139,92,246,.07)' : 'transparent', borderRadius: 10, padding: '6px 8px' }}>
-              <input type="checkbox" checked={on} onChange={() => setJobs((c) => on ? c.filter((x) => x !== j.kind) : [...c, j.kind])} style={{ accentColor: 'var(--violet)', width: 17, height: 17, flex: '0 0 auto' }} />
-              <div style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
-                <div className="lt">{rec && '⭐ '}{j.icon} {j.label} {j.via === 'telegram' && <span className="dim" style={{ fontSize: 11 }}>📡</span>}</div>
-              </div>
-            </div>
-          );
-        })}
+        <h3 style={{ marginBottom: 8 }}>🛠️ Rupert's assignments <span className="dim" style={{ fontWeight: 500, textTransform: 'none', fontSize: 12 }}>· 📡 = Telegram</span></h3>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          {RUPERT_JOBS.map((j) => (
+            <Chip key={j.kind} on={jobs.includes(j.kind)} rec={j.recDays.includes(dow)}
+              onClick={() => setJobs((c) => c.includes(j.kind) ? c.filter((x) => x !== j.kind) : [...c, j.kind])}>
+              {j.icon} {j.label.slice(0, 30)}{j.via === 'telegram' ? ' 📡' : ''}
+            </Chip>
+          ))}
+        </div>
       </div>
 
-      <button className="btn app" style={{ width: '100%', padding: '12px', fontSize: 15 }} disabled={busy} onClick={submit}>
-        {busy ? 'Sending to Rupert…' : `Start the day → (${checked.length} for me · ${jobs.length} for Rupert)`}
+      <div className="card" style={{ borderLeft: '3px solid var(--teal)' }}>
+        <h3 style={{ marginBottom: 4 }}>🎯 Your day, ranked</h3>
+        <p className="dim" style={{ fontSize: 12, margin: '0 0 8px' }}>Drag ≡ (or ↑↓) — top item is your first priority.</p>
+        {picked.length ? <RankList items={picked} setItems={setPicked} /> : <p className="dim" style={{ fontSize: 13 }}>Nothing selected yet — tap chips above.</p>}
+      </div>
+
+      <button className="btn app" style={{ width: '100%', padding: 12, fontSize: 15 }} disabled={busy || !picked.length} onClick={submit}>
+        {busy ? 'Sending to Rupert…' : `Start the day → (${picked.length} for me · ${jobs.length} for Rupert)`}
       </button>
     </section>
   );
