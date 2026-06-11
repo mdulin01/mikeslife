@@ -82,8 +82,9 @@ const ALERT_TYPES = [
   ['health', 'Health', '🫀'],
   ['rental', 'Rentals', '🏠'],
   ['celebrate', 'Wins', '🎉'],
+  ['ainews', 'AI news', '🤖'],
 ];
-const ALERT_EMOJI = { brief: '☀️', podcast: '🎧', recipe: '🍳', mealprep: '🥗', travel: '✈️', fitness: '💪', finance: '💰', health: '🫀', rental: '🏠', celebrate: '🎉' };
+const ALERT_EMOJI = { brief: '☀️', podcast: '🎧', recipe: '🍳', mealprep: '🥗', travel: '✈️', fitness: '💪', finance: '💰', health: '🫀', rental: '🏠', celebrate: '🎉', ainews: '🤖' };
 // Spoke-app deep links — alerts about an area link back to the app that owns it.
 const APP_LINKS = {
   fitness: ['mikesfitness', 'https://mikesfitness.app'],
@@ -144,7 +145,7 @@ function RecentAlerts({ alerts, onOpen, onAll, onSearch }) {
 
 // Per-type mute toggles — producers (crons + mini scripts) skip muted types.
 function AlertPrefs({ prefs, setPref }) {
-  const p = { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, ...(prefs || {}) };
+  const p = { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ainews: true, ...(prefs || {}) };
   return (
     <div className="card">
       <div className="subhead" style={{ marginTop: 0 }}>Notification types <span className="dim" style={{ textTransform: 'none', fontWeight: 500 }}>· tap to mute/unmute</span></div>
@@ -429,6 +430,143 @@ function BriefActions({ brief, plans, todayItems, activatePlan, addTodayItem, go
   );
 }
 
+
+// ───────────────────────── Morning check-in: plan the day with Rupert ─────────────────────────
+// Rupert's standing jobs. via:'telegram' = runs on the Mac mini (queued), via:'app' = cloud, results land as alerts.
+const RUPERT_JOBS = [
+  { kind: 'adamjobs', label: "Send Adam job updates", icon: '💼', via: 'telegram', recDays: [1, 4] },
+  { kind: 'social', label: 'Social listener — age-gap couples', icon: '📡', via: 'telegram', recDays: [2] },
+  { kind: 'ainews', label: 'Healthcare AI news scan', icon: '🤖', via: 'app', recDays: [1, 2, 3, 4, 5] },
+  { kind: 'podcast', label: 'Find podcasts for the commute', icon: '🎧', via: 'app', recDays: [3, 4] },
+  { kind: 'recipe', label: "Dinner recipes for tonight", icon: '🍳', via: 'app', recDays: [1, 2] },
+  { kind: 'mealprep', label: 'Sunday meal-prep plan', icon: '🥗', via: 'app', recDays: [0] },
+  { kind: 'travel', label: 'Travel ideas', icon: '✈️', via: 'app', recDays: [6, 0] },
+];
+
+function CheckInView({ data, submitDayPlan, onDone }) {
+  const today = easternYMD();
+  const dow = new Date(new Date().toLocaleString('en-US', { timeZone: EASTERN })).getDay();
+
+  // Candidates: current pending items + fresh steps from active plans (up to 8). First 3 = Rupert's picks.
+  const initialCands = () => {
+    const out = [];
+    const seen = new Set();
+    for (const t of (data.todayItems || [])) {
+      if (t.status === 'pending' && !seen.has(t.title)) { seen.add(t.title); out.push({ ...t }); }
+    }
+    const active = (data.plans || []).filter((p) => p.status === 'active');
+    outer: for (let round = 0; round < 5; round++) {
+      for (const p of active) {
+        const open = (p.stages || []).flatMap((st) => st.tasks || []).filter((x) => !x.done);
+        const task = open[round];
+        if (!task || seen.has(task.text)) continue;
+        seen.add(task.text);
+        out.push({ id: 'td' + Date.now() + '_' + out.length, title: task.text, why: p.title, pk: p.pk, planId: p.id, status: 'pending', until: null });
+        if (out.length >= 8) break outer;
+      }
+    }
+    return out;
+  };
+
+  const [cands] = useState(initialCands);
+  const [checked, setChecked] = useState(() => cands.slice(0, 3).map((c) => c.id));
+  const [jobs, setJobs] = useState(() => RUPERT_JOBS.filter((j) => j.recDays.includes(dow)).map((j) => j.kind));
+  const [busy, setBusy] = useState(false);
+
+  const toggle = (id) => setChecked((c) => c.includes(id) ? c.filter((x) => x !== id) : [...c, id]);
+  const move = (id, dir) => setChecked((c) => {
+    const i = c.indexOf(id); const j = i + dir;
+    if (i < 0 || j < 0 || j >= c.length) return c;
+    const n = [...c]; [n[i], n[j]] = [n[j], n[i]]; return n;
+  });
+
+  const submit = async () => {
+    setBusy(true);
+    const ranked = checked.map((id) => cands.find((c) => c.id === id)).filter(Boolean);
+    const delayed = (data.todayItems || []).filter((t) => t.status === 'delayed');
+    const rupertTasks = RUPERT_JOBS.filter((j) => jobs.includes(j.kind)).map((j) => ({ id: 'rt' + Date.now() + '_' + j.kind, kind: j.kind, label: j.label, icon: j.icon, via: j.via, status: 'pending' }));
+    submitDayPlan([...ranked, ...delayed], rupertTasks, today);
+    try {
+      const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
+      if (token && jobs.length) {
+        await fetch('/api/run-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: token, tasks: jobs }) });
+      }
+    } catch (e) { console.warn('run-tasks', e); }
+    setBusy(false);
+    onDone();
+  };
+
+  return (
+    <section className="focusview">
+      <div className="card" style={{ borderLeft: '3px solid var(--teal)' }}>
+        <h3>🦚 Plan your day</h3>
+        <p className="dim" style={{ fontSize: 12, marginTop: 4 }}>Check what YOU want done today (⭐ = Rupert recommends) — then rank with ↑↓.</p>
+        {cands.map((c, idx) => {
+          const isChecked = checked.includes(c.id);
+          const rank = checked.indexOf(c.id);
+          return (
+            <div className="loop" key={c.id} style={{ alignItems: 'center', background: isChecked ? 'rgba(45,212,191,.06)' : 'transparent', borderRadius: 10, padding: '6px 8px' }}>
+              <input type="checkbox" checked={isChecked} onChange={() => toggle(c.id)} style={{ accentColor: 'var(--teal)', width: 17, height: 17, flex: '0 0 auto' }} />
+              <div style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
+                <div className="lt">{idx < 3 && <span title="Rupert recommends">⭐ </span>}{c.title}</div>
+                {c.why && <div className="lm">{c.why}</div>}
+              </div>
+              {isChecked && (
+                <div className="row" style={{ gap: 4, flex: '0 0 auto', alignItems: 'center' }}>
+                  <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', fontWeight: 700 }}>{rank + 1}</span>
+                  <button className="btn def" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => move(c.id, -1)}>↑</button>
+                  <button className="btn def" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => move(c.id, 1)}>↓</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {!cands.length && <p className="dim" style={{ fontSize: 13 }}>No candidates — activate a plan in Planning first.</p>}
+      </div>
+
+      <div className="card" style={{ borderLeft: '3px solid var(--violet)' }}>
+        <h3>🛠️ Rupert's assignments</h3>
+        <p className="dim" style={{ fontSize: 12, marginTop: 4 }}>What should Rupert work on today? (⭐ = his usual for {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow]}s · 📡 = delivered via Telegram)</p>
+        {RUPERT_JOBS.map((j) => {
+          const on = jobs.includes(j.kind);
+          const rec = j.recDays.includes(dow);
+          return (
+            <div className="loop" key={j.kind} style={{ alignItems: 'center', background: on ? 'rgba(139,92,246,.07)' : 'transparent', borderRadius: 10, padding: '6px 8px' }}>
+              <input type="checkbox" checked={on} onChange={() => setJobs((c) => on ? c.filter((x) => x !== j.kind) : [...c, j.kind])} style={{ accentColor: 'var(--violet)', width: 17, height: 17, flex: '0 0 auto' }} />
+              <div style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
+                <div className="lt">{rec && '⭐ '}{j.icon} {j.label} {j.via === 'telegram' && <span className="dim" style={{ fontSize: 11 }}>📡</span>}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button className="btn app" style={{ width: '100%', padding: '12px', fontSize: 15 }} disabled={busy} onClick={submit}>
+        {busy ? 'Sending to Rupert…' : `Start the day → (${checked.length} for me · ${jobs.length} for Rupert)`}
+      </button>
+    </section>
+  );
+}
+
+// Status strip under Today: what Rupert is working on (from the morning plan).
+function RupertTaskStrip({ dayPlan, alerts, onOpenAlert }) {
+  if (!dayPlan || dayPlan.date !== easternYMD() || !(dayPlan.rupertTasks || []).length) return null;
+  const STATUS = { pending: '⏳', queued: '📡 queued', done: '✓ done', failed: '⚠ retry' };
+  return (
+    <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '2px 0 12px' }}>
+      {dayPlan.rupertTasks.map((t) => {
+        const resultAlert = t.status === 'done' ? (alerts || []).find((a) => a.type === t.kind) : null;
+        return (
+          <button key={t.id} className="pill" onClick={() => resultAlert && onOpenAlert(resultAlert.id)}
+            style={{ cursor: resultAlert ? 'pointer' : 'default', border: '1px solid var(--line)', background: t.status === 'done' ? 'rgba(45,212,191,.15)' : 'var(--panel2)', color: t.status === 'done' ? 'var(--teal)' : 'var(--mut)' }}>
+            {t.icon || '🛠️'} {t.label.split(' — ')[0].slice(0, 24)} · {STATUS[t.status] || t.status}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab }) {
   const brief = data && data.todayBrief && data.todayBrief.text;
   const alerts = (data && data.alerts) || [];
@@ -446,6 +584,8 @@ function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, 
           : <p className="dim" style={{ fontSize: 13 }}>Nothing queued yet — activate a plan in Planning and the daily list builds itself from its open steps.</p>}
         <p className="dim" style={{ fontSize: 11, marginTop: 10, marginBottom: 0 }}>4–5 things a day. ✓ done · ⏰ delay (1 day / 1 week / 1 month — it comes back on its date).</p>
       </Collapse>
+
+      <RupertTaskStrip dayPlan={data.dayPlan} alerts={data.alerts} onOpenAlert={onOpenAlert} />
 
       {/* ☀️ Brief — collapsed to its first meaningful line; focus lines are actionable */}
       {brief && (
@@ -795,7 +935,7 @@ export default function App() {
     setLocation, setFcmToken,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
-    setAlertPref, setAlertItemFeedback,
+    setAlertPref, setAlertItemFeedback, submitDayPlan,
   } = useLifeData(user);
 
   // Daily roll-forward of the Today list (client fallback — cron-brief also does this
@@ -977,7 +1117,9 @@ export default function App() {
         </div>
       )}
 
-      {focus ? (
+      {focus === 'checkin' ? (
+        <CheckInView data={data} submitDayPlan={submitDayPlan} onDone={() => { setFocus(null); goTab('home'); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
+      ) : focus ? (
         <FocusView focus={focus} data={data} openRupert={openRupert} onOpenApp={() => { setFocus(null); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
       ) : openAlert ? (
         <AlertDetail alert={openAlert} onBack={() => setOpenAlertId(null)} onFeedback={setAlertFeedback} onItemFeedback={setAlertItemFeedback} onDelete={deleteAlert} openRupert={openRupert} addTodayItem={addTodayItem} addPlan={addPlan} />

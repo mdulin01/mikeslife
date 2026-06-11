@@ -28,8 +28,11 @@ const initial = () => ({
   // Regenerated daily (client fallback + cron-brief); delayed items resurface on their date.
   todayItems: [],      // [{ id, title, why, pk, planId?, status: 'pending'|'done'|'delayed', until: null|'YYYY-MM-DD' }]
   todayItemsDate: null,
+  // Morning check-in output: today's ranked plan + Rupert's assignments.
+  dayPlan: null,       // { date, rupertTasks: [{id, kind, label, via, status}], submittedAt }
+  rupertQueue: [],     // mini-bound jobs the Mac mini picks up (adamjobs, social)
   // Per-type alert mutes — producers (crons + mini scripts) skip muted types.
-  alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true },
+  alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ainews: true },
 });
 
 // Native LifeOS data. Persists to Firestore doc lifeos/{uid} when configured;
@@ -253,8 +256,19 @@ export function useLifeData(user) {
     }), ['todayItems']);
   }, [mutate]);
 
+  // Submit the morning plan: ranked my-day items become todayItems; Rupert's
+  // assignments live on dayPlan (run-tasks updates their statuses server-side).
+  const submitDayPlan = useCallback((items, rupertTasks, date) => {
+    mutate((p) => ({
+      ...p,
+      todayItems: items,
+      todayItemsDate: date,
+      dayPlan: { date, rupertTasks, submittedAt: new Date().toISOString() },
+    }), ['todayItems', 'todayItemsDate', 'dayPlan']);
+  }, [mutate]);
+
   const setAlertPref = useCallback((type, on) => {
-    mutate((p) => ({ ...p, alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ...(p.alertPrefs || {}), [type]: on } }), ['alertPrefs']);
+    mutate((p) => ({ ...p, alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ainews: true, ...(p.alertPrefs || {}), [type]: on } }), ['alertPrefs']);
   }, [mutate]);
 
   // Per-item 👍/👎 inside a content alert. `items` is the rendered list (covers
@@ -301,5 +315,6 @@ export function useLifeData(user) {
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
     setAlertPref, setAlertItemFeedback,
+    submitDayPlan,
   };
 }
