@@ -63,9 +63,25 @@ nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
 .content{flex:1;min-width:0}
 @media(max-width:760px){
   .layout{display:block}
-  .sidenav{position:static;flex-direction:row;overflow-x:auto;margin-bottom:14px}
-  .sidenav .tab{width:auto;text-align:center}
+  .sidenav{display:none}
+  .content{padding-bottom:84px}
 }
+/* floating dock (mobile) — translucent pill, spectrum indicator */
+.dock{display:none}
+@media(max-width:760px){
+  .dock{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:90;display:flex;align-items:center;gap:2px;
+    background:rgba(13,20,32,.78);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    border:1px solid rgba(90,110,140,.35);border-radius:999px;padding:6px 8px;box-shadow:0 12px 36px rgba(0,0,0,.55)}
+  .dock-item{display:flex;flex-direction:column;align-items:center;gap:1px;background:none;border:none;color:var(--mut);
+    font-size:9.5px;font-weight:600;font-family:inherit;padding:5px 9px;cursor:pointer;position:relative}
+  .dock-item .di{font-size:19px;line-height:1.15}
+  .dock-item.active{color:var(--txt)}
+  .dock-item.active::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);width:16px;height:2.5px;border-radius:2px;
+    background:linear-gradient(90deg,#e40303,#ff8c00,#ffd700,#008026,#3b82f6,#732982)}
+  .dock-badge{position:absolute;top:0;right:2px;background:var(--teal);color:#04201c;font-size:8.5px;font-weight:800;border-radius:999px;padding:0 4px;line-height:1.5}
+}
+.more-sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:78px;z-index:91;background:rgba(16,24,39,.97);backdrop-filter:blur(16px);
+  border:1px solid var(--line);border-radius:16px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;box-shadow:0 18px 50px rgba(0,0,0,.6)}
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px 17px;margin-bottom:12px}
 .card h3{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut);margin-bottom:11px;font-weight:700}

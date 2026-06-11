@@ -1016,6 +1016,7 @@ export default function App() {
   const [pillar, setPillar] = useState(null);
   const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
   const [rupertOpen, setRupertOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [rupertSeed, setRupertSeed] = useState('');
   const [peacockPop, setPeacockPop] = useState(false);
   const openRupert = (s = '') => {
@@ -1265,6 +1266,28 @@ export default function App() {
       )}
 
       <p className="banner" style={{ marginTop: 24 }}>Mike's Life · {FIREBASE_READY ? 'connected' : 'demo mode — add Firebase config to enable sign-in + saving'} · <span className="dim">build {BUILD}</span></p>
+
+
+      {/* Mobile floating dock — 4 primary + More sheet (peacock lives in the header) */}
+      {moreOpen && (
+        <div className="more-sheet" onClick={() => setMoreOpen(false)}>
+          {[['inbox', '📥 Inbox'], ['email', '✉️ Email'], ['memories', '📸 Memories']].map(([id, label]) => (
+            <button key={id} className={'tab' + (!pillar && tab === id ? ' active' : '')} onClick={() => { goTab(id); setMoreOpen(false); }}>{label}</button>
+          ))}
+        </div>
+      )}
+      <div className="dock">
+        {[['home', '🏠', 'Home'], ['planning', '🗺️', 'Plans'], ['calendar', '🗓️', 'Calendar'], ['people', '👥', 'People']].map(([id, ic, lb]) => (
+          <button key={id} className={'dock-item' + (!pillar && !moreOpen && tab === id ? ' active' : '')}
+            onClick={() => { goTab(id); setMoreOpen(false); }}>
+            <span className="di">{ic}</span>{lb}
+            {id === 'home' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}
+          </button>
+        ))}
+        <button className={'dock-item' + (moreOpen || ['inbox', 'email', 'memories'].includes(tab) ? ' active' : '')} onClick={() => setMoreOpen(!moreOpen)}>
+          <span className="di">⋯</span>More
+        </button>
+      </div>
 
       {rupertOpen && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setRupertOpen(false); }}>
