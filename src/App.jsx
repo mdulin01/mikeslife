@@ -369,14 +369,57 @@ function generateTodayItems(prev, plans, today) {
   return [...kept, ...fresh];
 }
 
-function TodayItemRow({ t, onDone, onDelay }) {
+// ── ② Plan-step dialogs ──────────────────────────────────────────────────────
+// A Today one-liner that came from a plan task opens a sheet showing the step in
+// context, with an input whose answer is saved onto the plan task (task.note).
+function findPlanStep(plans, t) {
+  for (const p of (plans || [])) {
+    if (t.planId && p.id !== t.planId) continue;
+    for (const s of (p.stages || [])) {
+      const task = (s.tasks || []).find((x) => x.text === t.title);
+      if (task) return { plan: p, stage: s, task };
+    }
+    if (t.planId) return null;
+  }
+  return null;
+}
+
+function StepDialog({ step, onClose, setTaskNote, toggleTask, markTodayDone }) {
+  const { plan, stage, task, todayId } = step;
+  const [note, setNote] = useState(task.note || '');
+  const save = (alsoDone) => {
+    if (note.trim() !== (task.note || '')) setTaskNote(plan.id, stage.id, task.id, note);
+    if (alsoDone) {
+      if (!task.done) toggleTask(plan.id, stage.id, task.id);
+      if (todayId) markTodayDone(todayId);
+    }
+    onClose();
+  };
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-rupert" style={{ maxWidth: 480 }}>
+        <div className="section-title" style={{ marginBottom: 2 }}>🎯 {task.text}</div>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 12 }}>{plan.title} · {stage.title}{task.done ? ' · ✓ done' : ''}</div>
+        <textarea className="step-input" rows={4} autoFocus placeholder="Your answer / notes for this step…"
+          value={note} onChange={(e) => setNote(e.target.value)} />
+        <div className="row" style={{ gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+          <button className="btn def" onClick={onClose}>Cancel</button>
+          <button className="btn def" onClick={() => save(false)}>Save</button>
+          {!task.done && <button className="btn app" onClick={() => save(true)}>Save &amp; done ✓</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TodayItemRow({ t, onDone, onDelay, onStep }) {
   const [menu, setMenu] = useState(false);
   const done = t.status === 'done';
   return (
     <div className="loop" style={{ alignItems: 'center' }}>
       <div className="dot" style={{ background: `var(${COL[t.pk] || '--teal'})` }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="lt" style={done ? { textDecoration: 'line-through', opacity: .55 } : {}}>{t.icon ? t.icon + ' ' : ''}{t.title}</div>
+      <div style={{ flex: 1, minWidth: 0, cursor: onStep ? 'pointer' : 'default' }} onClick={onStep || undefined}>
+        <div className="lt" style={done ? { textDecoration: 'line-through', opacity: .55 } : {}}>{t.icon ? t.icon + ' ' : ''}{t.title}{onStep ? <span className="dim" style={{ fontSize: 12 }}> ›</span> : null}</div>
         {t.why && <div className="lm">{t.why}</div>}
       </div>
       <div className="row" style={{ gap: 6, flex: '0 0 auto', position: 'relative', alignItems: 'center' }}>
@@ -652,11 +695,13 @@ function RupertTaskStrip({ dayPlan, alerts, onOpenAlert }) {
   );
 }
 
-function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab, onPlanMore }) {
+function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab, onPlanMore, setTaskNote, toggleTask }) {
   const [showDone, setShowDone] = useState(false);
   const brief = data && data.todayBrief && data.todayBrief.text;
   const alerts = (data && data.alerts) || [];
   const all = (data && data.todayItems ? data.todayItems : []).filter((t) => t.status !== 'delayed');
+  const [openStep, setOpenStep] = useState(null); // {plan, stage, task, todayId}
+  const stepHandler = (t) => { const hit = findPlanStep(data.plans, t); return hit ? () => setOpenStep({ ...hit, todayId: t.id }) : null; };
   const items = all.filter((t) => t.status === 'pending');
   const doneItems = all.filter((t) => t.status === 'done');
   const openCount = items.length;
@@ -668,18 +713,19 @@ function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, 
       {/* 🎯 Today — the action center, open by default */}
       <Collapse icon="🎯" title="Today" right={openCount ? `${openCount} open` : ''} defaultOpen
         sub={items.length ? items.filter((t) => t.status === 'pending').map((t) => t.title).join(' · ').slice(0, 90) : null}>
-        {items.length ? items.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} />)
+        {items.length ? items.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} onStep={stepHandler(t)} />)
           : <p className="dim" style={{ fontSize: 13 }}>{doneItems.length ? 'All done — strong day. 🎉' : 'Nothing queued yet — tap ➕ Plan more or run the morning check-in.'}</p>}
         {doneItems.length > 0 && (
           <div style={{ marginTop: 8 }}>
             <button className="btn def" style={{ fontSize: 12 }} onClick={() => setShowDone(!showDone)}>✓ {doneItems.length} done today {showDone ? '▾' : '▸'}</button>
-            {showDone && doneItems.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} />)}
+            {showDone && doneItems.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} onStep={stepHandler(t)} />)}
           </div>
         )}
         <div className="row" style={{ gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn def" style={{ fontSize: 12 }} onClick={onPlanMore}>➕ Plan more</button>
           <span className="dim" style={{ fontSize: 11 }}>✓ done · ⏰ delay 1d/1w/1mo (returns on its date)</span>
         </div>
+        {openStep && <StepDialog step={openStep} onClose={() => setOpenStep(null)} setTaskNote={setTaskNote} toggleTask={toggleTask} markTodayDone={markTodayDone} />}
       </Collapse>
 
       <RupertTaskStrip dayPlan={data.dayPlan} alerts={data.alerts} onOpenAlert={onOpenAlert} />
@@ -1026,7 +1072,7 @@ export default function App() {
 
   const {
     data, loaded, resolveProposal,
-    activatePlan, setPlanStatus, toggleTask, addPlan, addTask,
+    activatePlan, setPlanStatus, toggleTask, setTaskNote, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
@@ -1231,7 +1277,7 @@ export default function App() {
         <>
           {tab === 'home' && (
             <>
-              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} />
+              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} />
               {FIREBASE_READY && (
                 <div className="locrow">
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>

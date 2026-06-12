@@ -130,6 +130,21 @@ export function useLifeData(user) {
     }), ['plans']);
   }, [mutate]);
 
+  // ② Plan-step dialogs: save an answer/notes onto a plan task (shown in Planning).
+  const setTaskNote = useCallback((planId, stageId, taskId, note) => {
+    mutate((p) => ({
+      ...p,
+      plans: p.plans.map((pl) => pl.id !== planId ? pl : {
+        ...pl,
+        updatedAt: new Date().toISOString(),
+        stages: pl.stages.map((s) => s.id !== stageId ? s : {
+          ...s,
+          tasks: s.tasks.map((t) => t.id !== taskId ? t : { ...t, note: (note || '').trim() }),
+        }),
+      }),
+    }), ['plans']);
+  }, [mutate]);
+
   const updateOdyssey = useCallback((id, patch) => {
     mutate((p) => ({ ...p, odyssey: p.odyssey.map((o) => o.id === id ? { ...o, ...patch, gauges: { ...o.gauges, ...(patch.gauges || {}) } } : o) }), ['odyssey']);
   }, [mutate]);
@@ -308,7 +323,7 @@ export function useLifeData(user) {
   return {
     data, loaded,
     resolveProposal, saveCheckin,
-    activatePlan, setPlanStatus, toggleTask, addPlan, addTask,
+    activatePlan, setPlanStatus, toggleTask, setTaskNote, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,

@@ -62,7 +62,7 @@ function PlanCard({ plan, activatePlan, setPlanStatus, toggleTask, addTask, open
                   {s.tasks.map((t) => (
                     <div className={'task' + (t.done ? ' done' : '')} key={t.id} onClick={() => toggleTask(plan.id, s.id, t.id)}>
                       <div className="box">{t.done ? '✓' : ''}</div>
-                      <div className="tt">{t.text}</div>
+                      <div className="tt">{t.text}{t.note ? <div className="tn">✏️ {t.note}</div> : null}</div>
                     </div>
                   ))}
                 </div>
