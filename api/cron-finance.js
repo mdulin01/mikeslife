@@ -39,10 +39,39 @@ export default async function handler(req, res) {
     const lifeDb = getFirestore(getApps().find((a) => a.name === '[DEFAULT]') ? getApp() : initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) }));
     const moneyDb = appFor('money', process.env.FIREBASE_SA_MONEY);
 
+    // ── GMA monthly accrual (1st of month ET): 1.5% of outstanding balance + $75 ──
+    // Writes the fee entry into mikes-money's Business ledger (business.gma.entries)
+    // and drops a finance alert. Idempotent: one fee entry per month.
+    let gmaAccrued = null;
+    try {
+      const today = easternYMD();
+      if (today.slice(8) === '01') {
+        const finRef = moneyDb.doc('finances/user-money-data');
+        const fin = (await finRef.get()).data() || {};
+        const biz = fin.business || {};
+        const entries = (biz.gma && biz.gma.entries) || [];
+        const bal = Math.round(entries.reduce((s, e) => s + (e.type === 'payment' ? -e.amount : e.amount), 0) * 100) / 100;
+        const month = today.slice(0, 7);
+        const already = entries.some((e) => e.type === 'fee' && (e.date || '').startsWith(month));
+        if (bal > 0 && !already) {
+          const fee = Math.round(bal * 1.5) / 100 + 75; // cents-precise 1.5% + $75 (matches invoice schedule)
+          const entry = { id: 'gma-accrual-' + month, date: today, type: 'fee', amount: fee, note: 'Auto late fee: 1.5% of $' + bal.toLocaleString('en-US', { minimumFractionDigits: 2 }) + ' + $75' };
+          await finRef.set({ business: { ...biz, gma: { entries: [...entries, entry] } } }, { merge: true });
+          gmaAccrued = { fee, balance: Math.round((bal + fee) * 100) / 100 };
+          const lifeRef = lifeDb.doc('lifeos/' + OWNER_UID);
+          const d0 = (await lifeRef.get()).data() || {};
+          await lifeRef.set({ alerts: [
+            { id: 'a' + Date.now(), type: 'finance', title: '💰 GMA late fee accrued', text: '+$' + fee.toFixed(2) + ' late fee added — balance now $' + gmaAccrued.balance.toLocaleString('en-US', { minimumFractionDigits: 2 }) + '. Send the updated invoice from the Business tab.', at: new Date().toISOString(), feedback: null, appUrl: 'https://www.mikesmoney.app/business' },
+            ...(d0.alerts || []),
+          ].slice(0, 120) }, { merge: true });
+        }
+      }
+    } catch (e) { console.error('gma accrual failed:', e.message); }
+
     const ref = lifeDb.doc(`lifeos/${OWNER_UID}`);
     const d = (await ref.get()).data() || {};
     if (d.alertPrefs && d.alertPrefs.finance === false) {
-      return res.status(200).json({ ok: true, skipped: 'finance alerts muted' });
+      return res.status(200).json({ ok: true, skipped: 'finance alerts muted', gmaAccrued });
     }
     const seen = new Set(d.financeSeen || []);
     const lines = [];
@@ -76,7 +105,7 @@ export default async function handler(req, res) {
       }
     } catch (e) { console.error('snapshot read failed:', e.message); }
 
-    if (!lines.length) return res.status(200).json({ ok: true, skipped: 'nothing over threshold' });
+    if (!lines.length) return res.status(200).json({ ok: true, skipped: 'nothing over threshold', gmaAccrued });
 
     const at = new Date().toISOString();
     const text = lines.join('\n') + `\n\nReview in mikes-money → Transactions (⚠ Large filter).`;
@@ -101,7 +130,7 @@ export default async function handler(req, res) {
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }
-    return res.status(200).json({ ok: true, items: lines.length, pushed });
+    return res.status(200).json({ ok: true, items: lines.length, pushed, gmaAccrued });
   } catch (e) {
     console.error('cron-finance error', e);
     return res.status(500).json({ error: e.message || 'error' });
