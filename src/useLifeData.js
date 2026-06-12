@@ -162,17 +162,6 @@ export function useLifeData(user) {
     // not just whichever one enabled notifications most recently.
     mutate((p) => {
       const fcmTokens = Array.from(new Set([...(p.fcmTokens || []), token])).slice(-5);
-      const addRoadmapItem = useCallback((item) => {
-    const title = (item.title || '').trim();
-    if (!title) return;
-    mutate((p) => ({ ...p, roadmap: [{ id: 'r' + Date.now(), app: item.app || 'lifeos', status: item.status || 'idea', title, note: item.note || '' }, ...(p.roadmap || [])] }), ['roadmap']);
-  }, [mutate]);
-  const updateRoadmapItem = useCallback((id, patch) => {
-    mutate((p) => ({ ...p, roadmap: (p.roadmap || []).map((x) => x.id === id ? { ...x, ...patch } : x) }), ['roadmap']);
-  }, [mutate]);
-  const deleteRoadmapItem = useCallback((id) => {
-    mutate((p) => ({ ...p, roadmap: (p.roadmap || []).filter((x) => x.id !== id) }), ['roadmap']);
-  }, [mutate]);
 
   return { ...p, fcmToken: token, fcmTokens, fcmUpdatedAt: new Date().toISOString() };
     }, ['fcmToken', 'fcmTokens', 'fcmUpdatedAt']);
@@ -317,6 +306,18 @@ export function useLifeData(user) {
 
   const deleteAlert = useCallback((id) => {
     mutate((p) => ({ ...p, alerts: (p.alerts || []).filter((a) => a.id !== id) }), ['alerts']);
+  }, [mutate]);
+
+  const addRoadmapItem = useCallback((item) => {
+    const title = (item.title || '').trim();
+    if (!title) return;
+    mutate((p) => ({ ...p, roadmap: [{ id: 'r' + Date.now(), app: item.app || 'lifeos', status: item.status || 'idea', title, note: item.note || '' }, ...(p.roadmap || [])] }), ['roadmap']);
+  }, [mutate]);
+  const updateRoadmapItem = useCallback((id, patch) => {
+    mutate((p) => ({ ...p, roadmap: (p.roadmap || []).map((x) => x.id === id ? { ...x, ...patch } : x) }), ['roadmap']);
+  }, [mutate]);
+  const deleteRoadmapItem = useCallback((id) => {
+    mutate((p) => ({ ...p, roadmap: (p.roadmap || []).filter((x) => x.id !== id) }), ['roadmap']);
   }, [mutate]);
 
   return {
