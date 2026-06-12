@@ -252,17 +252,3 @@ textarea{min-height:88px;resize:vertical;line-height:1.5}
 @media(max-width:560px){.lr-right .pill{display:none}}
 
 /* Roadmap / work tracker */
-.rm-select{flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:9px 10px;font-size:13px}
-.rm-filters{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;padding-bottom:4px}
-.rm-board{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-@media(max-width:760px){.rm-board{grid-template-columns:1fr 1fr}}
-@media(max-width:460px){.rm-board{grid-template-columns:1fr}}
-.rm-col{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;min-height:60px}
-.rm-colhead{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);margin:2px 2px 10px}
-.rm-item{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px;margin-bottom:8px}
-.rm-itemtop{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px}
-.rm-chip{font-size:10px;font-weight:700;border:1px solid;border-radius:999px;padding:1px 7px;background:rgba(148,163,184,.08)}
-.rm-title{font-size:13px;font-weight:600;line-height:1.35}
-.rm-note{font-size:11px;color:var(--dim);margin-top:4px;line-height:1.4}
-.rm-move{margin-top:8px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--mut);padding:5px 7px;font-size:11px}
-.rm-empty{color:var(--dim);text-align:center;padding:8px 0;font-size:13px}

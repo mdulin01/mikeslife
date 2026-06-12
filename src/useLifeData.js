@@ -5,7 +5,6 @@ import {
   SEED_PROPOSALS, SEED_PLANS, SEED_PEOPLE,
   SEED_ODYSSEY, SEED_GOODTIME, SEED_MINDMAP, SEED_MEMORIES, SEED_DOCUMENTS, stagesFromTemplate,
 } from './seed';
-import { SEED_ROADMAP } from './seed';
 
 const ymdEastern = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
@@ -33,7 +32,6 @@ const initial = () => ({
   dayPlan: null,       // { date, rupertTasks: [{id, kind, label, via, status}], submittedAt }
   rupertQueue: [],     // mini-bound jobs the Mac mini picks up (adamjobs, social)
   // Per-type alert mutes — producers (crons + mini scripts) skip muted types.
-  roadmap: SEED_ROADMAP,
   alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ainews: true },
 });
 
@@ -69,7 +67,6 @@ export function useLifeData(user) {
         if (Array.isArray(fresh.emailSignals) && fresh.emailSignals.length && !Array.isArray(fresh.emailSignals[0])) {
           fresh.emailSignals = fresh.emailSignals.map((m) => [m.tag, m.accent, m.from, m.subject, m.hint, m.act]);
         }
-        if (!fresh.roadmap) { setDoc(ref, { roadmap: SEED_ROADMAP }, { merge: true }).catch(() => {}); }
         setData({ ...initial(), ...fresh });
       } else {
         setDoc(ref, initial()).catch(console.error);
@@ -308,18 +305,6 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, alerts: (p.alerts || []).filter((a) => a.id !== id) }), ['alerts']);
   }, [mutate]);
 
-  const addRoadmapItem = useCallback((item) => {
-    const title = (item.title || '').trim();
-    if (!title) return;
-    mutate((p) => ({ ...p, roadmap: [{ id: 'r' + Date.now(), app: item.app || 'lifeos', status: item.status || 'idea', title, note: item.note || '' }, ...(p.roadmap || [])] }), ['roadmap']);
-  }, [mutate]);
-  const updateRoadmapItem = useCallback((id, patch) => {
-    mutate((p) => ({ ...p, roadmap: (p.roadmap || []).map((x) => x.id === id ? { ...x, ...patch } : x) }), ['roadmap']);
-  }, [mutate]);
-  const deleteRoadmapItem = useCallback((id) => {
-    mutate((p) => ({ ...p, roadmap: (p.roadmap || []).filter((x) => x.id !== id) }), ['roadmap']);
-  }, [mutate]);
-
   return {
     data, loaded,
     resolveProposal, saveCheckin,
@@ -328,7 +313,6 @@ export function useLifeData(user) {
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken,
-    addRoadmapItem, updateRoadmapItem, deleteRoadmapItem,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
     setAlertPref, setAlertItemFeedback,
