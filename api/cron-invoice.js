@@ -11,7 +11,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const LINK = 'https://mikeslife.app/?source=push&focus=content';
-const TIMESHEET = 'https://mikedulinmd.app/timesheet.html';
+const TIMESHEET = 'https://www.mikesmoney.app/business';
 
 const easternYMD = (dt = new Date()) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
