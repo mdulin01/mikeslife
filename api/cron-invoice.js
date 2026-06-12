@@ -1,5 +1,6 @@
 // Vercel Cron: invoice & time-tracking nudges (Fridays 1pm ET).
-//   1. Every Friday: "log your Avance + Triad hours" → deep link to the portal timesheet.
+//   1. Every Friday: "log your hours" → deep link to the mikes-money Business tab.
+//      Triad engagement ENDS 2026-06-30 — Triad line drops automatically after that.
 //   2. First Friday of the month: GMA payment reminder (they owe ~$6.4k, plan = $1k/month —
 //      nudge Mike to send the reminder email / check whether the $1k arrived).
 // Alert type 'finance' (rateable/mutable), pushed + in history.
@@ -39,7 +40,7 @@ export default async function handler(req, res) {
     const lines = [
       '🗓️ Friday wrap-up — log this week\'s consulting hours:',
       '• Avance ($250/hr, min 10/wk)',
-      '• Triad Primary Care ($150 first 16/wk, then $200)',
+      ...(today <= '2026-06-30' ? ['• Triad Primary Care ($150 first 16/wk, then $200) — ends 6/30'] : []),
       `Log them: ${TIMESHEET}`,
     ];
     if (firstFriday) {
@@ -62,7 +63,7 @@ export default async function handler(req, res) {
       try {
         await getMessaging().send({
           token,
-          notification: { title: '🧾 Log your hours', body: 'Avance + Triad this week' + (firstFriday ? ' · GMA payment check' : '') },
+          notification: { title: '🧾 Log your hours', body: (today <= '2026-06-30' ? 'Avance + Triad this week' : 'Avance this week') + (firstFriday ? ' · GMA payment check' : '') },
           data: { url: LINK },
           webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
         });
