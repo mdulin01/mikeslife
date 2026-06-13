@@ -179,6 +179,10 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, location }), ['location']);
   }, [mutate]);
 
+  const setEmergency = useCallback((emergency) => {
+    mutate((p) => ({ ...p, emergency }), ['emergency']);
+  }, [mutate]);
+
   const setCommitments = useCallback((text) => {
     mutate((p) => ({ ...p, commitments: text }), ['commitments']);
   }, [mutate]);
@@ -357,7 +361,7 @@ export function useLifeData(user) {
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
-    setLocation, setFcmToken, setCommitments,
+    setLocation, setFcmToken, setCommitments, setEmergency,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
     setAlertPref, setAlertItemFeedback,

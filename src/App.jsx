@@ -8,6 +8,7 @@ import { requestPushToken } from './messaging';
 import PlanningHub from './planning';
 import RupertChat from './rupert';
 import MemoriesView from './memories';
+import VaultView from './vault';
 import PurposeLearning from './learning';
 import {
   PILLARS, COL, SDOT, PILLAR_LABEL,
@@ -16,7 +17,7 @@ import {
 
 const TABS = [
   ['home', 'Home'], ['inbox', 'Inbox'], ['planning', 'Planning'],
-  ['calendar', 'Calendar'], ['email', 'Email'], ['people', 'People'], ['memories', 'Memories'],
+  ['calendar', 'Calendar'], ['email', 'Email'], ['people', 'People'], ['memories', 'Memories'], ['vault', 'Vault'],
 ];
 
 
@@ -1101,7 +1102,7 @@ export default function App() {
     data, loaded, resolveProposal,
     activatePlan, setPlanStatus, toggleTask, setTaskNote, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
-    addMemory, deleteMemory, addDocument, deleteDocument,
+    addMemory, deleteMemory, addDocument, deleteDocument, setEmergency,
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken, setCommitments,
     setAlertFeedback, deleteAlert,
@@ -1367,6 +1368,7 @@ export default function App() {
           )}
           {tab === 'people' && <People people={data.people} addPerson={addPerson} deletePerson={deletePerson} addPeople={addPeople} />}
           {tab === 'memories' && <MemoriesView data={data} addMemory={addMemory} deleteMemory={deleteMemory} addDocument={addDocument} deleteDocument={deleteDocument} />}
+          {tab === 'vault' && <VaultView data={data} setEmergency={setEmergency} />}
         </>
       )}
 
@@ -1376,7 +1378,7 @@ export default function App() {
       {/* Mobile floating dock — 4 primary + More sheet (peacock lives in the header) */}
       {moreOpen && (
         <div className="more-sheet" onClick={() => setMoreOpen(false)}>
-          {[['inbox', '📥 Inbox'], ['email', '✉️ Email'], ['memories', '📸 Memories']].map(([id, label]) => (
+          {[['inbox', '📥 Inbox'], ['email', '✉️ Email'], ['memories', '📸 Memories'], ['vault', '🚨 Vault']].map(([id, label]) => (
             <button key={id} className={'tab' + (!pillar && tab === id ? ' active' : '')} onClick={() => { goTab(id); setMoreOpen(false); }}>{label}</button>
           ))}
         </div>
@@ -1389,7 +1391,7 @@ export default function App() {
             {id === 'home' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}
           </button>
         ))}
-        <button className={'dock-item' + (moreOpen || ['inbox', 'email', 'memories'].includes(tab) ? ' active' : '')} onClick={() => setMoreOpen(!moreOpen)}>
+        <button className={'dock-item' + (moreOpen || ['inbox', 'email', 'memories', 'vault'].includes(tab) ? ' active' : '')} onClick={() => setMoreOpen(!moreOpen)}>
           <span className="di">⋯</span>More
         </button>
       </div>
