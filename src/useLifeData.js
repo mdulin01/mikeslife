@@ -110,7 +110,26 @@ export function useLifeData(user) {
   }, [mutate]);
 
   const saveCheckin = useCallback((checkin) => {
-    mutate((p) => ({ ...p, checkin }), ['checkin']);
+    mutate((p) => {
+      // Keep a dated history series so Patterns can trend energy/mood/capacity.
+      const d = checkin?.date;
+      const prev = (p.checkinHistory || []).filter((c) => c.date !== d);
+      const checkinHistory = d
+        ? [...prev, { date: d, energy: checkin.energy, mood: checkin.mood, capacity: checkin.capacity }]
+            .sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(-120)
+        : (p.checkinHistory || []);
+      return { ...p, checkin, checkinHistory };
+    }, ['checkin', 'checkinHistory']);
+  }, [mutate]);
+
+  // ── Quick capture ──
+  const addCapture = useCallback((text) => {
+    const t = (text || '').trim();
+    if (!t) return;
+    mutate((p) => ({ ...p, captures: [{ id: 'c' + Date.now(), text: t, at: new Date().toISOString() }, ...(p.captures || [])].slice(0, 100) }), ['captures']);
+  }, [mutate]);
+  const deleteCapture = useCallback((id) => {
+    mutate((p) => ({ ...p, captures: (p.captures || []).filter((c) => c.id !== id) }), ['captures']);
   }, [mutate]);
 
   const activatePlan = useCallback((id) => {
@@ -356,7 +375,7 @@ export function useLifeData(user) {
 
   return {
     data, loaded,
-    resolveProposal, saveCheckin,
+    resolveProposal, saveCheckin, addCapture, deleteCapture,
     activatePlan, setPlanStatus, toggleTask, setTaskNote, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,

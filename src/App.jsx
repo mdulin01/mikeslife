@@ -17,7 +17,7 @@ import {
 
 const TABS = [
   ['home', 'Home'], ['inbox', 'Inbox'], ['planning', 'Planning'],
-  ['calendar', 'Calendar'], ['email', 'Email'], ['people', 'People'], ['memories', 'Memories'], ['vault', 'Vault'],
+  ['calendar', 'Calendar'], ['email', 'Email'], ['people', 'People'], ['memories', 'Memories'], ['patterns', 'Patterns'], ['vault', 'Vault'],
 ];
 
 
@@ -571,7 +571,7 @@ function RankList({ items, setItems }) {
   );
 }
 
-function CheckInView({ data, submitDayPlan, onDone }) {
+function CheckInView({ data, submitDayPlan, saveCheckin, onDone }) {
   const today = easternYMD();
   const dow = new Date(new Date().toLocaleString('en-US', { timeZone: EASTERN })).getDay();
   const fc = data.fitnessContext;
@@ -605,6 +605,10 @@ function CheckInView({ data, submitDayPlan, onDone }) {
   });
   const [jobs, setJobs] = useState(() => RUPERT_JOBS.filter((j) => j.recDays.includes(dow)).map((j) => j.kind));
   const [busy, setBusy] = useState(false);
+  const c0 = data.checkin && data.checkin.date === today ? data.checkin : {};
+  const [energy, setEnergy] = useState(c0.energy ?? 6);
+  const [mood, setMood] = useState(c0.mood ?? 6);
+  const [capacity, setCapacity] = useState(c0.capacity ?? 6);
 
   const isPicked = (id) => picked.some((p) => p.id === id);
   const togglePick = (item) => setPicked((c) => isPicked(item.id) ? c.filter((x) => x.id !== item.id) : [...c, item]);
@@ -621,6 +625,7 @@ function CheckInView({ data, submitDayPlan, onDone }) {
     const delayed = (data.todayItems || []).filter((t) => t.status === 'delayed');
     const items = picked.map((p) => ({ id: p.id, title: p.title, why: p.why || '', pk: p.pk || 'health', planId: p.planId || null, status: 'pending', until: null, icon: p.icon || null }));
     const rupertTasks = RUPERT_JOBS.filter((j) => jobs.includes(j.kind)).map((j) => ({ id: 'rt' + Date.now() + '_' + j.kind, kind: j.kind, label: j.label, icon: j.icon, via: j.via, status: 'pending' }));
+    if (saveCheckin) saveCheckin({ date: today, energy, mood, capacity });
     submitDayPlan([...items, ...delayed], rupertTasks, today);
     try {
       const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
@@ -630,8 +635,22 @@ function CheckInView({ data, submitDayPlan, onDone }) {
     onDone();
   };
 
+  const Slider = ({ label, val, set, emoji }) => (
+    <div style={{ flex: '1 1 150px' }}>
+      <div className="row" style={{ justifyContent: 'space-between', fontSize: 12, marginBottom: 2 }}><span className="dim">{label}</span><span style={{ fontWeight: 600 }}>{emoji} {val}/10</span></div>
+      <input type="range" min="1" max="10" value={val} onChange={(e) => set(+e.target.value)} style={{ width: '100%', accentColor: 'var(--teal)' }} />
+    </div>
+  );
   return (
     <section className="focusview">
+      <div className="card" style={{ borderLeft: '3px solid var(--teal)' }}>
+        <h3 style={{ marginBottom: 8 }}>How are you today?</h3>
+        <div className="row" style={{ gap: 14, flexWrap: 'wrap' }}>
+          <Slider label="Energy" val={energy} set={setEnergy} emoji="⚡" />
+          <Slider label="Mood" val={mood} set={setMood} emoji={mood <= 3 ? '😣' : mood <= 6 ? '🙂' : '😄'} />
+          <Slider label="Capacity" val={capacity} set={setCapacity} emoji="🎚️" />
+        </div>
+      </div>
       {WELLNESS.map((sec) => (
         <div className="card" key={sec.section} style={sec.section.startsWith('🏃') ? { borderLeft: '3px solid var(--emerald)' } : {}}>
           <h3 style={{ marginBottom: 8 }}>{sec.section}</h3>
@@ -1076,6 +1095,83 @@ function CommitmentsCard({ value, onSave }) {
   );
 }
 
+function QuickCapture({ captures, addCapture, deleteCapture, addTodayItem }) {
+  const [text, setText] = useState('');
+  const list = captures || [];
+  const add = () => { if (text.trim()) { addCapture(text); setText(''); } };
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <input style={{ flex: 1, minWidth: 0, background: 'var(--panel2)', color: 'var(--txt)', border: '1px solid var(--line)', borderRadius: 10, padding: '9px 11px', fontSize: 14 }}
+          placeholder="🗒️ Capture a thought, idea, errand…" value={text}
+          onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} />
+        <button className="btn app" style={{ flex: '0 0 auto' }} onClick={add}>Add</button>
+      </div>
+      {list.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          {list.slice(0, 6).map((c) => (
+            <div className="row" key={c.id} style={{ gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--line)' }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13 }}>{c.text}</span>
+              <button className="btn def" style={{ fontSize: 11, padding: '4px 8px' }} title="Send to Today"
+                onClick={() => { addTodayItem({ title: c.text, pk: 'fun' }); deleteCapture(c.id); }}>→ Today</button>
+              <button className="btn def" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => deleteCapture(c.id)}>✕</button>
+            </div>
+          ))}
+          {list.length > 6 && <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>+{list.length - 6} more captured</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Spark({ series, color = 'var(--teal)', max = 10 }) {
+  const pts = series.filter((p) => p.v != null);
+  if (pts.length < 2) return <div className="dim" style={{ fontSize: 12 }}>Not enough check-ins yet.</div>;
+  const w = 280, h = 46;
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${(i / (pts.length - 1) * w).toFixed(1)} ${(h - (p.v / max) * h).toFixed(1)}`).join(' ');
+  return <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 46 }} preserveAspectRatio="none"><path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+function PatternsView({ data }) {
+  const hist = (data.checkinHistory || []).slice(-30);
+  const avg = (k) => { const v = hist.map((c) => c[k]).filter((x) => x != null); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : '—'; };
+  const gt = data.goodTime || [];
+  // Most energizing activities from the Good Time Journal (energy+engagement).
+  const byAct = {};
+  for (const g of gt) { const k = (g.activity || '').trim(); if (!k) continue; (byAct[k] = byAct[k] || []).push((Number(g.energy) || 0) + (Number(g.engagement) || 0)); }
+  const top = Object.entries(byAct).map(([a, arr]) => ({ a, s: arr.reduce((x, y) => x + y, 0) / arr.length, n: arr.length }))
+    .sort((x, y) => y.s - x.s).slice(0, 5);
+  const METRICS = [['energy', '⚡ Energy', 'var(--amber)'], ['mood', '🙂 Mood', 'var(--teal)'], ['capacity', '🎚️ Capacity', 'var(--emerald)']];
+  return (
+    <section>
+      <div className="section-title">📈 Patterns <span className="dim" style={{ fontWeight: 500 }}>· how you're trending</span></div>
+      {hist.length < 2 && <p className="banner">Patterns build as you check in each morning (energy / mood / capacity). Keep checking in and trends + correlations fill in here.</p>}
+      {METRICS.map(([k, label, color]) => (
+        <div className="card" key={k} style={{ marginBottom: 10 }}>
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>{label}</span>
+            <span className="dim" style={{ fontSize: 13 }}>avg {avg(k)}/10 · {hist.length} check-ins</span>
+          </div>
+          <Spark series={hist.map((c) => ({ v: c[k] }))} color={color} />
+        </div>
+      ))}
+      {top.length > 0 && (
+        <div className="card">
+          <h3>What energizes you most</h3>
+          <p className="dim" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>From your Good Time Journal (energy + engagement).</p>
+          {top.map((t) => (
+            <div className="row" key={t.a} style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--line)' }}>
+              <span style={{ fontSize: 13 }}>{t.a}</span>
+              <span className="dim" style={{ fontSize: 12 }}>{t.s.toFixed(1)}/10 · {t.n}×</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="banner">Coming as data accrues: workout-vs-mood and spend-vs-mood correlations (needs the fitness + finance daily series Rupert is now syncing).</p>
+    </section>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(!FIREBASE_READY);
@@ -1099,7 +1195,7 @@ export default function App() {
   };
 
   const {
-    data, loaded, resolveProposal,
+    data, loaded, resolveProposal, saveCheckin, addCapture, deleteCapture,
     activatePlan, setPlanStatus, toggleTask, setTaskNote, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument, setEmergency,
@@ -1320,9 +1416,10 @@ export default function App() {
       {notifMsg && <div className="dim" style={{ fontSize: 12, margin: '-2px 2px 10px' }}>{notifMsg}</div>}
 
       <CommitmentsCard value={data.commitments} onSave={setCommitments} />
+      {tab === 'home' && <QuickCapture captures={data.captures} addCapture={addCapture} deleteCapture={deleteCapture} addTodayItem={addTodayItem} />}
 
       {focus === 'checkin' ? (
-        <CheckInView data={data} submitDayPlan={submitDayPlan} onDone={() => { setFocus(null); goTab('home'); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
+        <CheckInView data={data} submitDayPlan={submitDayPlan} saveCheckin={saveCheckin} onDone={() => { setFocus(null); goTab('home'); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
       ) : focus ? (
         <FocusView focus={focus} data={data} openRupert={openRupert} onOpenApp={() => { setFocus(null); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
       ) : openAlert ? (
@@ -1368,6 +1465,7 @@ export default function App() {
           )}
           {tab === 'people' && <People people={data.people} addPerson={addPerson} deletePerson={deletePerson} addPeople={addPeople} />}
           {tab === 'memories' && <MemoriesView data={data} addMemory={addMemory} deleteMemory={deleteMemory} addDocument={addDocument} deleteDocument={deleteDocument} />}
+          {tab === 'patterns' && <PatternsView data={data} />}
           {tab === 'vault' && <VaultView data={data} setEmergency={setEmergency} />}
         </>
       )}
@@ -1378,7 +1476,7 @@ export default function App() {
       {/* Mobile floating dock — 4 primary + More sheet (peacock lives in the header) */}
       {moreOpen && (
         <div className="more-sheet" onClick={() => setMoreOpen(false)}>
-          {[['inbox', '📥 Inbox'], ['email', '✉️ Email'], ['memories', '📸 Memories'], ['vault', '🚨 Vault']].map(([id, label]) => (
+          {[['inbox', '📥 Inbox'], ['email', '✉️ Email'], ['memories', '📸 Memories'], ['patterns', '📈 Patterns'], ['vault', '🚨 Vault']].map(([id, label]) => (
             <button key={id} className={'tab' + (!pillar && tab === id ? ' active' : '')} onClick={() => { goTab(id); setMoreOpen(false); }}>{label}</button>
           ))}
         </div>
@@ -1391,7 +1489,7 @@ export default function App() {
             {id === 'home' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}
           </button>
         ))}
-        <button className={'dock-item' + (moreOpen || ['inbox', 'email', 'memories', 'vault'].includes(tab) ? ' active' : '')} onClick={() => setMoreOpen(!moreOpen)}>
+        <button className={'dock-item' + (moreOpen || ['inbox', 'email', 'memories', 'patterns', 'vault'].includes(tab) ? ' active' : '')} onClick={() => setMoreOpen(!moreOpen)}>
           <span className="di">⋯</span>More
         </button>
       </div>
