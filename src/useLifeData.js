@@ -256,10 +256,26 @@ export function useLifeData(user) {
   }, [mutate]);
 
   const markTodayDone = useCallback((id) => {
-    mutate((p) => ({
-      ...p,
-      todayItems: (p.todayItems || []).map((t) => t.id === id ? { ...t, status: t.status === 'done' ? 'pending' : 'done' } : t),
-    }), ['todayItems']);
+    mutate((p) => {
+      const item = (p.todayItems || []).find((t) => t.id === id);
+      const nowDone = item && item.status !== 'done';
+      const todayItems = (p.todayItems || []).map((t) => t.id === id ? { ...t, status: t.status === 'done' ? 'pending' : 'done' } : t);
+      // If this Today item came from a plan, complete the underlying plan task too —
+      // otherwise the daily generator pulls the still-open task back tomorrow (the
+      // "I checked off 'talk to Josh' but it's back" bug). Match by planId + text.
+      let plans = p.plans;
+      if (item && item.planId) {
+        plans = (p.plans || []).map((pl) => pl.id !== item.planId ? pl : {
+          ...pl,
+          updatedAt: new Date().toISOString(),
+          stages: (pl.stages || []).map((st) => ({
+            ...st,
+            tasks: (st.tasks || []).map((tk) => tk.text === item.title ? { ...tk, done: nowDone } : tk),
+          })),
+        });
+      }
+      return { ...p, todayItems, plans };
+    }, ['todayItems', 'plans']);
   }, [mutate]);
 
   // One-tap from an alert (or anywhere): put a concrete item on today's list.
