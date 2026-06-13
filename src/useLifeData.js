@@ -96,7 +96,17 @@ export function useLifeData(user) {
   }, [write]);
 
   const resolveProposal = useCallback((id) => {
-    mutate((p) => ({ ...p, proposals: p.proposals.filter((x) => x.id !== id) }), ['proposals']);
+    // Remember what was dismissed (normalized title) so cron-proposals never
+    // regenerates it. "Do it" routes through here too, so acted items also stick.
+    const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+    mutate((p) => {
+      const gone = (p.proposals || []).find((x) => x.id === id);
+      const key = gone ? norm(gone.title) : null;
+      const dismissedProposalKeys = key
+        ? Array.from(new Set([key, ...(p.dismissedProposalKeys || [])])).slice(0, 100)
+        : (p.dismissedProposalKeys || []);
+      return { ...p, proposals: (p.proposals || []).filter((x) => x.id !== id), dismissedProposalKeys };
+    }, ['proposals', 'dismissedProposalKeys']);
   }, [mutate]);
 
   const saveCheckin = useCallback((checkin) => {
