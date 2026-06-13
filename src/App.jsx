@@ -1147,11 +1147,12 @@ export default function App() {
     touch.current.pulling = false;
   };
 
+  const [notifMsg, setNotifMsg] = useState('');
   const enableNotify = async () => {
-    setNotif('working');
+    setNotif('working'); setNotifMsg('');
     const r = await requestPushToken();
-    if (r.ok) { setFcmToken(r.token); setNotif('granted'); }
-    else { setNotif('default'); console.warn('notifications:', r.reason); }
+    if (r.ok) { setFcmToken(r.token); setNotif('granted'); setNotifMsg('✓ Notifications synced — Rupert can reach this device.'); }
+    else { setNotif(typeof Notification !== 'undefined' ? Notification.permission : 'default'); setNotifMsg('Could not enable: ' + r.reason + (r.reason === 'unsupported' ? ' — open from the Home-Screen icon, not Safari.' : '')); console.warn('notifications:', r.reason); }
   };
 
   useEffect(() => {
@@ -1253,13 +1254,22 @@ export default function App() {
       )}
       {refreshMsg && <div className="dim" style={{ fontSize: 12, margin: '-2px 2px 10px' }}>{refreshMsg}</div>}
 
-      {FIREBASE_READY && notif !== 'granted' && notif !== 'unsupported' && (
-        <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div style={{ fontSize: 13 }}>🔔 <b>Turn on notifications</b> so Rupert can ping your phone for check-ins.
-            <span className="dim"> On iPhone, add this app to your Home Screen first, open it from there, then tap Enable.</span></div>
-          <button className="btn app" style={{ flex: '0 0 auto' }} onClick={enableNotify}>{notif === 'working' ? '…' : 'Enable'}</button>
-        </div>
+      {FIREBASE_READY && notif !== 'unsupported' && (
+        notif === 'granted' ? (
+          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 13 }}>🔔 <b>Notifications on.</b>
+              <span className="dim"> Not getting pings? Tap Re-sync to refresh this device's push token.</span></div>
+            <button className="btn def" style={{ flex: '0 0 auto' }} onClick={enableNotify}>{notif === 'working' ? '…' : 'Re-sync'}</button>
+          </div>
+        ) : (
+          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontSize: 13 }}>🔔 <b>Turn on notifications</b> so Rupert can ping your phone for check-ins.
+              <span className="dim"> On iPhone, add this app to your Home Screen first, open it from there, then tap Enable.</span></div>
+            <button className="btn app" style={{ flex: '0 0 auto' }} onClick={enableNotify}>{notif === 'working' ? '…' : 'Enable'}</button>
+          </div>
+        )
       )}
+      {notifMsg && <div className="dim" style={{ fontSize: 12, margin: '-2px 2px 10px' }}>{notifMsg}</div>}
 
       {focus === 'checkin' ? (
         <CheckInView data={data} submitDayPlan={submitDayPlan} onDone={() => { setFocus(null); goTab('home'); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
