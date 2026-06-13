@@ -1232,6 +1232,13 @@ export default function App() {
   const now = new Date();
   const openPillar = (k) => { setPillar(k); };
   const goTab = (t) => { setPillar(null); setOpenAlertId(null); setAlertsOpen(null); setSearchOpen(false); setTab(t); };
+  // "Do it" on an inbox proposal: commit its concrete next-step onto Today's list
+  // (so it has a real home), clear the proposal, and jump to Home to see it land.
+  const doProposal = (p) => {
+    addTodayItem({ title: (p.act || p.title || '').replace(/^→\s*/, '').trim(), why: p.title, pk: p.pk || 'fun' });
+    resolveProposal(p.id);
+    goTab('home');
+  };
   const openAlert = data.alerts ? data.alerts.find((a) => a.id === openAlertId) : null;
 
 
