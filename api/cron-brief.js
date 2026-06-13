@@ -80,7 +80,9 @@ export default async function handler(req, res) {
     const openItems = todayItems.filter((t) => t.status === 'pending');
 
     // Context (no check-in — capacity is assumed at 4-5 items/day).
+    const DEFAULT_COMMITMENTS = 'In Charlotte working at Rea Farms every Wednesday and Thursday — NOT available for evening plans or dinners on Wed/Thu nights.';
     const ctx = [];
+    ctx.push('Recurring commitments (NEVER schedule over these): ' + ((d.commitments && d.commitments.trim()) || DEFAULT_COMMITMENTS));
     if (openItems.length) ctx.push("Today's list (4-5 items, accept-or-delay model): " + openItems.map((t) => `${t.title} [${t.pk}${t.why ? ' · ' + t.why : ''}]`).join('; '));
     const doneRecently = (d.todayItems || []).filter((t) => t.status === 'done').map((t) => t.title);
     if (doneRecently.length) ctx.push('Recently completed: ' + doneRecently.join('; '));
@@ -119,7 +121,7 @@ Week ahead:
 🥈 ...
 🥉 ...
 One question to sit with: ...
-Rules: short lines. Wins come from done items + plan activity in the context. Only include Health/Money lines supported by the context. The week-ahead picks come from active plans + today's list. End with one genuinely good reflective question. No preamble, no sign-off.`;
+Rules: short lines. Respect Mike's recurring commitments — never suggest anything that conflicts. Wins come from done items + plan activity in the context. Only include Health/Money lines supported by the context. The week-ahead picks come from active plans + today's list. End with one genuinely good reflective question. No preamble, no sign-off.`;
 
     const SYS = isSunday ? SYS_WEEKLY : `You are Rupert, Mike's chief of staff. Write a SHORT morning brief he reads on his phone, in EXACTLY this shape:
 Good morning Mike.
@@ -135,7 +137,7 @@ Recommended day:
 Morning → ...
 Afternoon → ...
 Evening → ...
-Rules: keep every line short. Draw the 3 focus items from today's list and active plans. If a plan is stalled, one gentle nudge line after the focus items. Only include a Health or Money line you can support from the context; skip a section entirely if there's no data. No preamble, no sign-off.`;
+Rules: keep every line short. Respect Mike's recurring commitments — never suggest a focus/event that conflicts (e.g. a Wed/Thu evening plan). Draw the 3 focus items from today's list and active plans. If a plan is stalled, one gentle nudge line after the focus items. Only include a Health or Money line you can support from the context; skip a section entirely if there's no data. No preamble, no sign-off.`;
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}) });
     const completion = await openai.chat.completions.create({

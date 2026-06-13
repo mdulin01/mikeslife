@@ -1048,6 +1048,33 @@ function FocusView({ focus, data, openRupert, onOpenApp }) {
 }
 
 // ───────────────────────── App ─────────────────────────
+function CommitmentsCard({ value, onSave }) {
+  const DEFAULT = 'In Charlotte working at Rea Farms every Wed & Thu — no evening plans those nights.';
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(value || '');
+  useEffect(() => { setText(value || ''); }, [value]);
+  const current = (value && value.trim()) || DEFAULT;
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <button className="row" style={{ width: '100%', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', justifyContent: 'space-between', alignItems: 'center', padding: 0 }} onClick={() => setOpen((o) => !o)}>
+        <span style={{ fontSize: 13 }}>📌 <b>Recurring commitments</b> <span className="dim">— Rupert won't schedule over these</span></span>
+        <span className="dim" style={{ fontSize: 13 }}>{open ? '▾' : '▸'}</span>
+      </button>
+      {!open && <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>{current}</div>}
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={DEFAULT}
+            style={{ width: '100%', boxSizing: 'border-box', background: 'var(--panel2)', color: 'var(--txt)', border: '1px solid var(--line)', borderRadius: 10, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+          <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+            <button className="btn def" onClick={() => { setText(value || ''); setOpen(false); }}>Cancel</button>
+            <button className="btn app" onClick={() => { onSave(text.trim()); setOpen(false); }}>Save</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(!FIREBASE_READY);
@@ -1076,7 +1103,7 @@ export default function App() {
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
-    setLocation, setFcmToken,
+    setLocation, setFcmToken, setCommitments,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
     setAlertPref, setAlertItemFeedback, submitDayPlan,
@@ -1283,6 +1310,8 @@ export default function App() {
         )
       )}
       {notifMsg && <div className="dim" style={{ fontSize: 12, margin: '-2px 2px 10px' }}>{notifMsg}</div>}
+
+      <CommitmentsCard value={data.commitments} onSave={setCommitments} />
 
       {focus === 'checkin' ? (
         <CheckInView data={data} submitDayPlan={submitDayPlan} onDone={() => { setFocus(null); goTab('home'); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />

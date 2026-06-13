@@ -18,6 +18,8 @@ import { getFirestore } from 'firebase-admin/firestore';
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
 
+const DEFAULT_COMMITMENTS = 'In Charlotte working at Rea Farms every Wednesday and Thursday — NOT available for evening plans or dinners on Wed/Thu nights.';
+
 const SYSTEM = `You are Rupert, Mike's AI chief of staff inside the "Mike's Life" app.
 Be warm, concise, and genuinely useful — talk like a sharp, trusted aide, not a chatbot. Prefer short, skimmable answers; use lists only when they help (e.g. a grocery list or a workout).
 
@@ -29,7 +31,8 @@ Hard rules:
 - You cannot send messages, move money, book, or change anything in the world — you only advise and draft. Say so if asked to act.
 - Don't advise on medications or medical decisions — that's out of scope. If asked, briefly point him to his own provider and move on.
 - For financial/tax specifics, end with: "— but confirm with a fee-only fiduciary advisor, and your CPA for taxes."
-- Never invent facts about his data. If the context doesn't say, say you don't have it.`;
+- Never invent facts about his data. If the context doesn't say, say you don't have it.
+- ALWAYS respect Mike's recurring commitments / availability (shown in context). Never propose plans, dinners, workouts, or events that conflict with them.`;
 
 function ensureAdmin() {
   if (!getApps().length) {
@@ -39,8 +42,9 @@ function ensureAdmin() {
 }
 
 function buildContext(d) {
-  if (!d) return 'No saved data yet.';
+  if (!d) return `Recurring commitments (NEVER schedule over these): ${DEFAULT_COMMITMENTS}`;
   const lines = [];
+  lines.push('Recurring commitments / availability (NEVER schedule over these): ' + ((d.commitments && d.commitments.trim()) || DEFAULT_COMMITMENTS));
   if (d.checkin) {
     const c = d.checkin;
     lines.push(`Latest check-in (${c.date || '?'}): energy ${c.energy}/10, mood ${c.mood}/10, capacity ${c.capacity}/10.` + (c.journal ? ` Journal: "${c.journal}"` : ''));

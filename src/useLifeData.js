@@ -169,6 +169,10 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, location }), ['location']);
   }, [mutate]);
 
+  const setCommitments = useCallback((text) => {
+    mutate((p) => ({ ...p, commitments: text }), ['commitments']);
+  }, [mutate]);
+
   const setFcmToken = useCallback((token) => {
     // Store ALL devices' tokens (phone + desktop) so pushes reach every device,
     // not just whichever one enabled notifications most recently.
@@ -343,7 +347,7 @@ export function useLifeData(user) {
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
-    setLocation, setFcmToken,
+    setLocation, setFcmToken, setCommitments,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
     setAlertPref, setAlertItemFeedback,
