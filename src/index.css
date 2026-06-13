@@ -45,7 +45,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   .ptile .em{font-size:19px}
   .ptile .badge{top:4px;right:4px;min-width:15px;height:15px;font-size:9px}
   .ptile .okdot{top:6px;right:6px}
-  .wrap{padding-bottom:96px}
+  .wrap{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 }
 
 nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
@@ -61,17 +61,17 @@ nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
 @media(max-width:760px){
   .layout{display:block}
   .sidenav{display:none}
-  .content{padding-bottom:84px}
+  .content{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 }
 /* floating dock (mobile) — translucent pill, spectrum indicator */
 .dock{display:none}
 @media(max-width:760px){
-  .dock{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:90;display:flex;align-items:center;gap:2px;
-    background:rgba(13,20,32,.78);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
-    border:1px solid rgba(90,110,140,.35);border-radius:999px;padding:6px 8px;box-shadow:0 12px 36px rgba(0,0,0,.55)}
-  .dock-item{display:flex;flex-direction:column;align-items:center;gap:1px;background:none;border:none;color:var(--mut);
-    font-size:9.5px;font-weight:600;font-family:inherit;padding:5px 9px;cursor:pointer;position:relative}
-  .dock-item .di{font-size:19px;line-height:1.15}
+  .dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:90;display:flex;align-items:center;gap:3px;
+    background:rgba(13,20,32,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    border:1px solid rgba(90,110,140,.4);border-radius:999px;padding:7px 11px;box-shadow:0 12px 38px rgba(0,0,0,.6);max-width:calc(100vw - 24px)}
+  .dock-item{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--mut);
+    font-size:10px;font-weight:600;font-family:inherit;padding:6px 11px;cursor:pointer;position:relative;min-width:46px}
+  .dock-item .di{font-size:22px;line-height:1.1}
   .dock-item.active{color:var(--txt)}
   .dock-item.active::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);width:16px;height:2.5px;border-radius:2px;
     background:linear-gradient(90deg,#e40303,#ff8c00,#ffd700,#008026,#3b82f6,#732982)}
