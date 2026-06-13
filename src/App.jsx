@@ -1154,6 +1154,16 @@ export default function App() {
     if (r.ok) { setFcmToken(r.token); setNotif('granted'); setNotifMsg('✓ Notifications synced — Rupert can reach this device.'); }
     else { setNotif(typeof Notification !== 'undefined' ? Notification.permission : 'default'); setNotifMsg('Could not enable: ' + r.reason + (r.reason === 'unsupported' ? ' — open from the Home-Screen icon, not Safari.' : '')); console.warn('notifications:', r.reason); }
   };
+  const testPush = async () => {
+    setNotifMsg('Sending test ping…');
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const r = await fetch('/api/test-push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) });
+      const j = await r.json();
+      if (j.ok) setNotifMsg(`Sent to ${j.pushed} device${j.pushed === 1 ? '' : 's'}${j.pruned ? ` · pruned ${j.pruned} dead` : ''} — watch for it. If nothing arrives, check iOS Settings → Notifications → mikeslife.`);
+      else setNotifMsg('Test push: ' + (j.reason || j.error || 'no devices reached') + (j.pruned ? ` (pruned ${j.pruned} stale)` : ''));
+    } catch (e) { setNotifMsg('Test push failed: ' + e.message); }
+  };
 
   useEffect(() => {
     if (!FIREBASE_READY) return;
@@ -1259,7 +1269,10 @@ export default function App() {
           <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 13 }}>🔔 <b>Notifications on.</b>
               <span className="dim"> Not getting pings? Tap Re-sync to refresh this device's push token.</span></div>
-            <button className="btn def" style={{ flex: '0 0 auto' }} onClick={enableNotify}>{notif === 'working' ? '…' : 'Re-sync'}</button>
+            <div className="row" style={{ gap: 6, flex: '0 0 auto' }}>
+              <button className="btn def" onClick={testPush}>Test</button>
+              <button className="btn def" onClick={enableNotify}>{notif === 'working' ? '…' : 'Re-sync'}</button>
+            </div>
           </div>
         ) : (
           <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
