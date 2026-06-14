@@ -22,6 +22,7 @@ const MONEY_PROPS = [
   { id: 'prairie-trail', nick: '2 prairie trail', toks: ['prairie'] },
   { id: 'hillcrest', nick: 'hillcrest', toks: ['hillcrest'] },
   { id: 'n-church', nick: 'n. church', toks: ['church'] },
+  { id: 'brookhurst', nick: 'brookhurst', toks: ['brookhurst'] },
 ];
 const moneyPropIdFor = (name) => {
   const n = (name || '').toLowerCase();
