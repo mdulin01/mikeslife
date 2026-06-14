@@ -158,10 +158,12 @@ export default async function handler(req, res) {
 
     const text = renderItems(items);
     const at = new Date().toISOString();
+    const alertId = 'a' + Date.now();
+    const link = `https://mikeslife.app/?source=push&alert=${alertId}`;
     await ref.set({
       contentFeed: { slot, title: TITLES[slot], text, at },
       alerts: [
-        { id: 'a' + Date.now(), type: slot, title: TITLES[slot], text, items, at, feedback: null },
+        { id: alertId, type: slot, title: TITLES[slot], text, items, at, feedback: null },
         ...(d.alerts || []),
       ].slice(0, 120),
     }, { merge: true });
@@ -173,8 +175,8 @@ export default async function handler(req, res) {
         await getMessaging().send({
           token,
           notification: { title: TITLES[slot], body: items.map((it) => it.t).join(' · ').slice(0, 180) },
-          data: { url: LINK },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
+          data: { url: link },
+          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
         });
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }

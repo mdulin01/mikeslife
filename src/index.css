@@ -1,4 +1,4 @@
-html,body{max-width:100%;overflow-x:hidden}
+html,body{max-width:100%;overflow-x:clip}
 :root{
   --bg:#0a0f1d; --panel:#0f172a; --panel2:#1a2436; --line:#243144;
   --txt:#e8edf5; --mut:#94a3b8; --dim:#64748b;

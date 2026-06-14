@@ -91,9 +91,11 @@ export default async function handler(req, res) {
 
     const at = new Date().toISOString();
     const appUrl = APPS[out.area] || null;
+    const alertId = 'a' + Date.now();
+    const link = `https://mikeslife.app/?source=push&alert=${alertId}`;
     await ref.set({
       alerts: [
-        { id: 'a' + Date.now(), type: 'celebrate', title: '🎉 Way to go', text: out.text, at, feedback: null, ...(appUrl ? { appUrl } : {}) },
+        { id: alertId, type: 'celebrate', title: '🎉 Way to go', text: out.text, at, feedback: null, ...(appUrl ? { appUrl } : {}) },
         ...(d.alerts || []),
       ].slice(0, 120),
     }, { merge: true });
@@ -105,8 +107,8 @@ export default async function handler(req, res) {
         await getMessaging().send({
           token,
           notification: { title: '🎉 Way to go, Mike', body: out.text.slice(0, 180) },
-          data: { url: LINK },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
+          data: { url: link },
+          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
         });
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }

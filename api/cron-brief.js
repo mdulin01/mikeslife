@@ -147,9 +147,11 @@ Rules: keep every line short. Respect Mike's recurring commitments — never sug
     const brief = (completion.choices?.[0]?.message?.content || '').trim();
     const at = new Date().toISOString();
 
+    const alertId = 'a' + Date.now();
+    const link = `https://mikeslife.app/?source=push&alert=${alertId}`;
     patch.todayBrief = { text: brief, date: today };
     patch.alerts = [
-      { id: 'a' + Date.now(), type: 'brief', title: (isSunday ? '🗓️ Weekly review ' : '☀️ Morning brief ') + today, text: brief, at, feedback: null },
+      { id: alertId, type: 'brief', title: (isSunday ? '🗓️ Weekly review ' : '☀️ Morning brief ') + today, text: brief, at, feedback: null },
       ...(d.alerts || []),
     ].slice(0, 120);
     await ref.set(patch, { merge: true });
@@ -171,8 +173,8 @@ Rules: keep every line short. Respect Mike's recurring commitments — never sug
         await getMessaging().send({
           token,
           notification: { title: '☀️ ' + firstLine, body: 'Your brief is ready — tap to open.' },
-          data: { url: LINK },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
+          data: { url: link },
+          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
         });
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }

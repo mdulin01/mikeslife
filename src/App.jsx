@@ -1218,7 +1218,7 @@ export default function App() {
 
   // Alert navigation: openAlertId = a single alert's page; alertsOpen = the
   // searchable full-history view ('search' auto-focuses the search box).
-  const [openAlertId, setOpenAlertId] = useState(null);
+  const [openAlertId, setOpenAlertId] = useState(() => { try { return new URLSearchParams(window.location.search).get('alert'); } catch { return null; } });
   const [alertsOpen, setAlertsOpen] = useState(null); // null | 'list' | 'search'
   const [searchOpen, setSearchOpen] = useState(false); // global search
 
@@ -1309,6 +1309,9 @@ export default function App() {
     try {
       const p = new URLSearchParams(window.location.search);
       if (p.get('rupert') === '1' || p.get('view') === 'rupert') openRupert();
+      // ?alert=<id> from a tapped push: strip it from the URL once consumed so a
+      // reload doesn't re-open it (openAlertId already initialised from the param).
+      if (p.get('alert')) window.history.replaceState({}, '', window.location.pathname);
     } catch { /* ignore */ }
   }, []);
 
