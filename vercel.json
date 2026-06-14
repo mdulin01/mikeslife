@@ -51,6 +51,10 @@
     {
       "path": "/api/cron-rentals-nudge",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron-rentals-bridge",
+      "schedule": "30 14 * * *"
     }
   ]
 }
