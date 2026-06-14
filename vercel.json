@@ -47,6 +47,10 @@
     {
       "path": "/api/cron-nutrition",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron-rentals-nudge",
+      "schedule": "0 14 * * *"
     }
   ]
 }
