@@ -39,6 +39,14 @@
     {
       "path": "/api/cron-proposals",
       "schedule": "30 11 * * *"
+    },
+    {
+      "path": "/api/cron-updates",
+      "schedule": "30 11 * * *"
+    },
+    {
+      "path": "/api/cron-nutrition",
+      "schedule": "0 21 * * *"
     }
   ]
 }
