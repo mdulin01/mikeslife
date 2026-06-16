@@ -441,16 +441,17 @@ function TodayItemRow({ t, onDone, onDelay, onStep }) {
 
 // Make the brief's 🥇🥈🥉 focus lines tappable: matching plan → activate + open
 // Planning; already on today's list → just confirm; otherwise → add to Today.
-function BriefActions({ brief, plans, todayItems, activatePlan, addTodayItem, goTab }) {
+function BriefActions({ brief, plans, todayItems, activatePlan, addTodayItem, goTab, toggleTask, setPlanStatus, markTodayDone }) {
   const [msg, setMsg] = useState('');
   const norm = (s) => String(s || '').toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const overlap = (a, b) => { const x = norm(a), y = norm(b); return x.length > 3 && y.length > 3 && (x.includes(y) || y.includes(x)); };
   const lines = String(brief || '').split('\n')
     .map((l) => { const m = l.match(/^\s*(?:🥇|🥈|🥉)\s*(.+)$/u); return m ? m[1].replace(/[.。]\s*$/, '').trim() : null; })
     .filter(Boolean).slice(0, 3);
   if (!lines.length) return null;
   const act = (line) => {
     const n = norm(line);
-    const plan = (plans || []).find((p) => { const pn = norm(p.title); return pn.length > 3 && (n.includes(pn) || pn.includes(n)); });
+    const plan = (plans || []).find((p) => overlap(p.title, line));
     if (plan) {
       if (plan.status !== 'active' && plan.status !== 'done') activatePlan(plan.id);
       goTab('planning');
@@ -461,12 +462,31 @@ function BriefActions({ brief, plans, todayItems, activatePlan, addTodayItem, go
     addTodayItem({ title: line, why: "from Rupert's brief", pk: 'purpose' });
     setMsg(`"${line}" added to Today ✓`);
   };
+  // "Already handled IRL" — stop Rupert from recycling this item tomorrow.
+  // Marks the matching plan task done, else the whole plan done, else the Today item done.
+  const markHandled = (line) => {
+    for (const pl of (plans || [])) {
+      for (const s of (pl.stages || [])) {
+        for (const t of (s.tasks || [])) {
+          if (!t.done && overlap(t.text, line)) { toggleTask(pl.id, s.id, t.id); setMsg(`Marked "${line.slice(0, 30)}…" handled ✓`); return; }
+        }
+      }
+    }
+    const plan = (plans || []).find((p) => overlap(p.title, line));
+    if (plan) { setPlanStatus(plan.id, 'done'); setMsg(`Marked plan "${plan.title}" done ✓`); return; }
+    const item = (todayItems || []).find((t) => norm(t.title) === norm(line));
+    if (item && item.status !== 'done') { markTodayDone(item.id); setMsg(`Marked "${line.slice(0, 30)}…" done ✓`); return; }
+    setMsg(`Couldn't match "${line.slice(0, 30)}…" — mark it done in Plans.`);
+  };
   return (
     <div style={{ marginTop: 12 }}>
-      <div className="dim" style={{ fontSize: 11, marginBottom: 6 }}>Act on these — tap to plan or add to Today:</div>
-      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+      <div className="dim" style={{ fontSize: 11, marginBottom: 6 }}>Act on these — tap to plan/add, or ✓ if already handled:</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {lines.map((l, i) => (
-          <button key={i} className="btn def" style={{ fontSize: 12 }} onClick={() => act(l)}>{['🥇', '🥈', '🥉'][i]} {l.slice(0, 50)} →</button>
+          <div key={i} className="row" style={{ gap: 6, alignItems: 'center' }}>
+            <button className="btn def" style={{ fontSize: 12, flex: 1, textAlign: 'left' }} onClick={() => act(l)}>{['🥇', '🥈', '🥉'][i]} {l.slice(0, 46)} →</button>
+            <button className="btn def" title="Already handled — stop showing this" style={{ fontSize: 12 }} onClick={() => markHandled(l)}>✓</button>
+          </div>
         ))}
       </div>
       {msg && <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>{msg}</div>}
@@ -715,7 +735,7 @@ function RupertTaskStrip({ dayPlan, alerts, onOpenAlert }) {
   );
 }
 
-function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab, onPlanMore, setTaskNote, toggleTask }) {
+function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab, onPlanMore, setTaskNote, toggleTask, setPlanStatus }) {
   const [showDone, setShowDone] = useState(false);
   const brief = data && data.todayBrief && data.todayBrief.text;
   const alerts = (data && data.alerts) || [];
@@ -754,7 +774,7 @@ function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, 
       {brief && (
         <Collapse icon="☀️" title="Rupert's brief" sub={briefSub} right={data.todayBrief.date || ''}>
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}><Linkified text={brief} /></div>
-          <BriefActions brief={brief} plans={data.plans} todayItems={data.todayItems} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} />
+          <BriefActions brief={brief} plans={data.plans} todayItems={data.todayItems} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} toggleTask={toggleTask} setPlanStatus={setPlanStatus} markTodayDone={markTodayDone} />
         </Collapse>
       )}
 
@@ -1437,7 +1457,7 @@ export default function App() {
         <>
           {tab === 'home' && (
             <>
-              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} />
+              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} setPlanStatus={setPlanStatus} />
               {FIREBASE_READY && (
                 <div className="locrow">
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>

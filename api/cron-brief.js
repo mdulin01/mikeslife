@@ -103,6 +103,17 @@ export default async function handler(req, res) {
     }
     if (fb.length) ctx.push('His ratings of past content (more like 👍, less like 👎): ' + fb.slice(0, 16).join('; '));
 
+    // Anti-repetition: surface what the last few briefs already pushed as focus, so we
+    // vary the focus instead of parroting the same long-term plan items every morning.
+    const recentFocus = [];
+    for (const a of (d.alerts || []).filter((x) => x.type === 'brief').slice(0, 3)) {
+      for (const ln of String(a.text || '').split('\n')) {
+        const m = ln.match(/^\s*(?:🥇|🥈|🥉)\s*(.+)$/u);
+        if (m) recentFocus.push(m[1].replace(/[.。]\s*$/, '').trim());
+      }
+    }
+    if (recentFocus.length) ctx.push('Focus items already shown in recent briefs (do NOT just repeat these — vary them, retire ones with no progress, or ask if already handled): ' + [...new Set(recentFocus)].join('; '));
+
     const isSunday = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(new Date()) === 'Sun';
 
     const SYS_WEEKLY = `You are Rupert, Mike's chief of staff. It's Sunday — write his WEEKLY REVIEW + week ahead, phone-readable, in EXACTLY this shape:
@@ -121,23 +132,32 @@ Week ahead:
 🥈 ...
 🥉 ...
 One question to sit with: ...
-Rules: short lines. Respect Mike's recurring commitments — never suggest anything that conflicts. Wins come from done items + plan activity in the context. Only include Health/Money lines supported by the context. The week-ahead picks come from active plans + today's list. End with one genuinely good reflective question. No preamble, no sign-off. ACCURACY (critical): state only facts that appear in the context. Never invent, round, or extrapolate numbers, dates, or events; if a Health/Money/Training fact isn't in the context, omit that line entirely rather than guessing. When the context gives a date for a fact, keep it so nothing reads as more current than it is.`;
+Rules: short lines. Respect Mike's recurring commitments — never suggest anything that conflicts. Wins come from done items + plan activity in the context. Only include Health/Money lines supported by the context, and for Health never list a normal/'ok' lab — only abnormal/flagged results or care that is due. Surface time-sensitive items from Calendar/email (payments, RSVPs, replies, deadlines) in the relevant lines. The week-ahead picks come from active plans + today's list. End with one genuinely good reflective question. No preamble, no sign-off. ACCURACY (critical): state only facts that appear in the context. Never invent, round, or extrapolate numbers, dates, or events; if a Health/Money/Training fact isn't in the context, omit that line entirely rather than guessing. When the context gives a date for a fact, keep it so nothing reads as more current than it is.`;
 
-    const SYS = isSunday ? SYS_WEEKLY : `You are Rupert, Mike's chief of staff. Write a SHORT morning brief he reads on his phone, in EXACTLY this shape:
+    const SYS = isSunday ? SYS_WEEKLY : `You are Rupert, Mike's chief of staff. Write a SHORT morning brief he reads on his phone. Include ONLY the sections that have real content — silently drop any section that would be empty. Shape:
 Good morning Mike.
+Top of mind:
+- <time-sensitive, concrete actions due in the next ~5 days, each WITH its date — mined from Calendar, Recent email, and Finances: payments/auto-drafts, RSVPs, meetings to prep for, emails awaiting your reply, hard deadlines>
 Today's focus:
 🥇 ...
 🥈 ...
 🥉 ...
-Health
-- ...
-Money
-- ...
+Health & Training:
+- <ONLY abnormal/⚠-flagged labs or preventive care that is due/overdue — NEVER list a normal or 'ok' result>
+- <one concrete training suggestion grounded in recent workouts + current plan; suggest rest/recovery if he trained hard the last day or two>
+FYI:
+- <upcoming birthdays and low-priority heads-ups (renewals, notices) from Calendar/email>
 Recommended day:
 Morning → ...
 Afternoon → ...
 Evening → ...
-Rules: keep every line short. Respect Mike's recurring commitments — never suggest a focus/event that conflicts (e.g. a Wed/Thu evening plan). Draw the 3 focus items from today's list and active plans. If a plan is stalled, one gentle nudge line after the focus items. Only include a Health or Money line you can support from the context; skip a section entirely if there's no data. No preamble, no sign-off. ACCURACY (critical): state only facts that appear in the context. Never invent, round, or extrapolate numbers, dates, or events; if a Health/Money/Training fact isn't in the context, omit that line entirely rather than guessing. When the context gives a date for a fact, keep it so nothing reads as more current than it is.`;
+Rules:
+- "Top of mind" is the most important section: actively scan Calendar + Recent email + Finances for anything time-sensitive and act-on-able, and lead with it. Each item dated. Skip the section only if genuinely nothing is pending.
+- Today's focus: exactly 3 items drawn from active plans + today's list. ANTI-REPEAT (critical): do NOT just re-list the focus items shown in recent briefs — vary them, and if a plan item has recurred for days with no progress, retire it or convert it to a single gentle "still open, or already handled?" nudge instead of parroting it.
+- Health & Training: never surface normal/'ok' labs. Only mention a lab if it's abnormal/flagged or care is due. Always include one training line whenever any training data exists.
+- Respect Mike's recurring commitments — never suggest a focus, event, or day-block that conflicts (e.g. a Wed/Thu evening plan).
+- Keep every line short and phone-readable. No preamble, no sign-off.
+ACCURACY (critical): state only facts that appear in the context. Never invent, round, or extrapolate numbers, dates, or events; if a fact isn't in the context, omit it. Keep any date the context attaches to a fact so nothing reads as more current than it is.`;
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}) });
     const completion = await openai.chat.completions.create({
