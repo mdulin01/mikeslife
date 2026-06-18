@@ -346,8 +346,9 @@ const DELAYS = [['1 day', 1], ['1 week', 7], ['1 month', 30]];
 
 // Daily roll-forward: sleeping delays stay hidden, due delays resurface,
 // yesterday's done/untouched items drop, fresh items come from active plans.
-function generateTodayItems(prev, plans, today) {
+function generateTodayItems(prev, plans, today, doneLedger) {
   const old = prev || [];
+  const recentlyDone = new Set((doneLedger || []).map((e) => e.title));
   const kept = [];
   for (const t of old) {
     if (t.status === 'delayed' && t.until && t.until > today) kept.push(t);
@@ -361,7 +362,7 @@ function generateTodayItems(prev, plans, today) {
     for (const p of active) {
       const open = (p.stages || []).flatMap((s) => s.tasks || []).filter((x) => !x.done);
       const task = open[round];
-      if (!task || titles.has(task.text)) continue;
+      if (!task || titles.has(task.text) || recentlyDone.has(task.text)) continue;
       titles.add(task.text);
       fresh.push({ id: 'td' + Date.now() + '_' + fresh.length, title: task.text, why: p.title, pk: p.pk, planId: p.id, status: 'pending', until: null });
       if (visible + fresh.length >= 5) break outer;
@@ -1115,6 +1116,104 @@ function CommitmentsCard({ value, onSave }) {
   );
 }
 
+const ALERT_LABELS = [
+  ['brief', '☀️ Morning brief'], ['celebrate', '🎉 Evening wins'],
+  ['podcast', '🎧 Podcasts'], ['recipe', '🍳 Recipes'], ['mealprep', '🥗 Meal prep'],
+  ['ainews', '🤖 AI news'], ['travel', '✈️ Travel'], ['fitness', '🏋️ Fitness'],
+  ['finance', '💰 Finance'], ['health', '🩺 Health'], ['rental', '🏠 Rentals'],
+];
+
+function Toggle({ on, onChange }) {
+  return (
+    <button type="button" className={'toggle' + (on ? ' on' : '')} role="switch" aria-checked={on} onClick={() => onChange(!on)}>
+      <span className="knob" />
+    </button>
+  );
+}
+
+// ⚙️ Settings — notifications, brief time, quiet hours, recurring commitments,
+// per-type alert mutes, and which AI brain Rupert uses.
+function SettingsSheet({ data, onClose, setSetting, setCommitments, setAlertPref, notif, enableNotify, testPush, notifMsg }) {
+  const st = { aiProvider: 'openai', briefHour: 7, quietStart: 21, quietEnd: 7, ...(data.settings || {}) };
+  const prefs = { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ainews: true, ...(data.alertPrefs || {}) };
+  const HOURS = Array.from({ length: 24 }, (_, h) => h);
+  const hlabel = (h) => { const ap = h < 12 ? 'AM' : 'PM'; const hr = h % 12 === 0 ? 12 : h % 12; return `${hr} ${ap}`; };
+  const sel = { background: 'var(--panel2)', color: 'var(--txt)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 8px', fontSize: 13 };
+  return (
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-settings">
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 18 }}>⚙️ Settings</h2>
+          <button className="btn def" onClick={onClose}>Done</button>
+        </div>
+
+        <div className="card">
+          <h3>🔔 Notifications</h3>
+          {notif === 'granted' ? (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 8 }}>On for this device. Not getting pings? Re-sync the push token.</div>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn def" onClick={testPush}>Send test</button>
+                <button className="btn app" onClick={enableNotify}>{notif === 'working' ? '…' : 'Re-sync'}</button>
+              </div>
+            </>
+          ) : notif === 'unsupported' ? (
+            <div className="dim" style={{ fontSize: 13 }}>Open this app from its Home-Screen icon (not Safari) to enable push.</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 8 }}>On iPhone: add this app to your Home Screen, open it from there, then enable.</div>
+              <button className="btn app" onClick={enableNotify}>{notif === 'working' ? '…' : 'Enable notifications'}</button>
+            </>
+          )}
+          {notifMsg && <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>{notifMsg}</div>}
+        </div>
+
+        <div className="card">
+          <h3>☀️ Morning brief</h3>
+          <div className="setrow"><span>Send my brief at</span>
+            <select style={sel} value={st.briefHour} onChange={(e) => setSetting('briefHour', +e.target.value)}>
+              {HOURS.slice(4, 12).map((h) => <option key={h} value={h}>{hlabel(h)}</option>)}
+            </select>
+          </div>
+          <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>Eastern time. The check-in nudge and brief both follow this.</div>
+        </div>
+
+        <div className="card">
+          <h3>🌙 Quiet hours</h3>
+          <div className="setrow"><span>Mute pushes</span>
+            <span className="row" style={{ gap: 6 }}>
+              <select style={sel} value={st.quietStart} onChange={(e) => setSetting('quietStart', +e.target.value)}>{HOURS.map((h) => <option key={h} value={h}>{hlabel(h)}</option>)}</select>
+              <span className="dim">→</span>
+              <select style={sel} value={st.quietEnd} onChange={(e) => setSetting('quietEnd', +e.target.value)}>{HOURS.map((h) => <option key={h} value={h}>{hlabel(h)}</option>)}</select>
+            </span>
+          </div>
+          <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>Content still refreshes in-app — you just won't get buzzed.</div>
+        </div>
+
+        <CommitmentsCard value={data.commitments} onSave={setCommitments} />
+
+        <div className="card">
+          <h3>📣 What Rupert can ping me about</h3>
+          {ALERT_LABELS.map(([k, label]) => (
+            <div className="setrow" key={k}><span style={{ fontSize: 14 }}>{label}</span><Toggle on={prefs[k] !== false} onChange={(v) => setAlertPref(k, v)} /></div>
+          ))}
+        </div>
+
+        <div className="card">
+          <h3>🧠 Rupert's brain</h3>
+          <div className="seg">
+            <button className={'segbtn' + (st.aiProvider !== 'anthropic' ? ' on' : '')} onClick={() => setSetting('aiProvider', 'openai')}>OpenAI</button>
+            <button className={'segbtn' + (st.aiProvider === 'anthropic' ? ' on' : '')} onClick={() => setSetting('aiProvider', 'anthropic')}>Anthropic</button>
+          </div>
+          <div className="dim" style={{ fontSize: 11, marginTop: 8 }}>{st.aiProvider === 'anthropic' ? 'Using Claude — requires ANTHROPIC_API_KEY in Vercel. Applies to Rupert chat + your morning brief.' : 'Using OpenAI (gpt-5.5).'}</div>
+        </div>
+
+        <p className="banner" style={{ marginTop: 8 }}>Mike's Life · <span className="dim">build {BUILD}</span></p>
+      </div>
+    </div>
+  );
+}
+
 function QuickCapture({ captures, addCapture, deleteCapture, addTodayItem }) {
   const [text, setText] = useState('');
   const list = captures || [];
@@ -1207,6 +1306,7 @@ export default function App() {
   const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
   const [rupertOpen, setRupertOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [rupertSeed, setRupertSeed] = useState('');
   const [peacockPop, setPeacockPop] = useState(false);
   const openRupert = (s = '') => {
@@ -1223,7 +1323,7 @@ export default function App() {
     setLocation, setFcmToken, setCommitments,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
-    setAlertPref, setAlertItemFeedback, submitDayPlan,
+    setAlertPref, setAlertItemFeedback, submitDayPlan, setSetting,
   } = useLifeData(user);
 
   // Daily roll-forward of the Today list (client fallback — cron-brief also does this
@@ -1232,7 +1332,7 @@ export default function App() {
     if (!FIREBASE_READY || !user || !loaded) return;
     const today = easternYMD();
     if (data.todayItemsDate === today) return;
-    setTodayItems(generateTodayItems(data.todayItems, data.plans, today), today);
+    setTodayItems(generateTodayItems(data.todayItems, data.plans, today, data.doneLedger), today);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, loaded, data.todayItemsDate]);
 
@@ -1377,7 +1477,7 @@ export default function App() {
         <div className="date">
           {easternDisplay(now).weekday}<br />
           {easternDisplay(now).long}
-          {FIREBASE_READY && user && <div><button className="signout" onClick={() => signOut(auth)}>Sign out</button></div>}
+          {FIREBASE_READY && user && <div className="row" style={{ gap: 8, justifyContent: 'flex-end', marginTop: 3 }}><button className="gearbtn" title="Settings" onClick={() => setSettingsOpen(true)}>⚙️</button><button className="signout" onClick={() => signOut(auth)}>Sign out</button></div>}
         </div>
       </div>
 
@@ -1418,27 +1518,14 @@ export default function App() {
       )}
       {refreshMsg && <div className="dim" style={{ fontSize: 12, margin: '-2px 2px 10px' }}>{refreshMsg}</div>}
 
-      {FIREBASE_READY && notif !== 'unsupported' && (
-        notif === 'granted' ? (
-          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <div style={{ fontSize: 13 }}>🔔 <b>Notifications on.</b>
-              <span className="dim"> Not getting pings? Tap Re-sync to refresh this device's push token.</span></div>
-            <div className="row" style={{ gap: 6, flex: '0 0 auto' }}>
-              <button className="btn def" onClick={testPush}>Test</button>
-              <button className="btn def" onClick={enableNotify}>{notif === 'working' ? '…' : 'Re-sync'}</button>
-            </div>
-          </div>
-        ) : (
-          <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <div style={{ fontSize: 13 }}>🔔 <b>Turn on notifications</b> so Rupert can ping your phone for check-ins.
-              <span className="dim"> On iPhone, add this app to your Home Screen first, open it from there, then tap Enable.</span></div>
-            <button className="btn app" style={{ flex: '0 0 auto' }} onClick={enableNotify}>{notif === 'working' ? '…' : 'Enable'}</button>
-          </div>
-        )
+      {FIREBASE_READY && notif !== 'unsupported' && notif !== 'granted' && (
+        <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 13 }}>🔔 <b>Turn on notifications</b> so Rupert can ping your phone for check-ins.
+            <span className="dim"> On iPhone, add this app to your Home Screen first, open it from there, then tap Enable. (Manage anytime in ⚙️ Settings.)</span></div>
+          <button className="btn app" style={{ flex: '0 0 auto' }} onClick={enableNotify}>{notif === 'working' ? '…' : 'Enable'}</button>
+        </div>
       )}
-      {notifMsg && <div className="dim" style={{ fontSize: 12, margin: '-2px 2px 10px' }}>{notifMsg}</div>}
-
-      <CommitmentsCard value={data.commitments} onSave={setCommitments} />
+      {notifMsg && notif !== 'granted' && <div className="dim" style={{ fontSize: 12, margin: '-2px 2px 10px' }}>{notifMsg}</div>}
       {tab === 'home' && <QuickCapture captures={data.captures} addCapture={addCapture} deleteCapture={deleteCapture} addTodayItem={addTodayItem} />}
 
       {focus === 'checkin' ? (
@@ -1496,6 +1583,11 @@ export default function App() {
       <p className="banner" style={{ marginTop: 24 }}>Mike's Life · {FIREBASE_READY ? 'connected' : 'demo mode — add Firebase config to enable sign-in + saving'} · <span className="dim">build {BUILD}</span></p>
 
 
+      </main>
+      </div>
+      {/* Fixed overlays live OUTSIDE the scrolling <main> so iOS anchors them to the
+          viewport rather than a scrolled/animated ancestor — this is what kept the
+          floating dock from drifting up the screen on the brief/focus views. */}
       {/* Mobile floating dock — 4 primary + More sheet (peacock lives in the header) */}
       {moreOpen && (
         <div className="more-sheet" onClick={() => setMoreOpen(false)}>
@@ -1524,8 +1616,9 @@ export default function App() {
           </div>
         </div>
       )}
-      </main>
-      </div>
+      {settingsOpen && (
+        <SettingsSheet data={data} onClose={() => setSettingsOpen(false)} setSetting={setSetting} setCommitments={setCommitments} setAlertPref={setAlertPref} notif={notif} enableNotify={enableNotify} testPush={testPush} notifMsg={notifMsg} />
+      )}
     </div>
   );
 }

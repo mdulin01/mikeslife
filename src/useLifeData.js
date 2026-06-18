@@ -33,6 +33,11 @@ const initial = () => ({
   rupertQueue: [],     // mini-bound jobs the Mac mini picks up (adamjobs, social)
   // Per-type alert mutes — producers (crons + mini scripts) skip muted types.
   alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ainews: true },
+  // Recently-completed item titles (last ~21d) — Rupert/the Today engine won't resurface these.
+  doneLedger: [],     // [{ title, at }]
+  // App-wide settings (gear sheet). aiProvider switches Rupert's brain; briefHour is the
+  // Eastern hour the morning push fires; quietStart/quietEnd mute pushes overnight (ET hours).
+  settings: { aiProvider: 'openai', briefHour: 7, quietStart: 21, quietEnd: 7 },
 });
 
 // Native LifeOS data. Persists to Firestore doc lifeos/{uid} when configured;
@@ -207,13 +212,11 @@ export function useLifeData(user) {
   }, [mutate]);
 
   const setFcmToken = useCallback((token) => {
-    // Store ALL devices' tokens (phone + desktop) so pushes reach every device,
-    // not just whichever one enabled notifications most recently.
-    mutate((p) => {
-      const fcmTokens = Array.from(new Set([...(p.fcmTokens || []), token])).slice(-5);
-
-  return { ...p, fcmToken: token, fcmTokens, fcmUpdatedAt: new Date().toISOString() };
-    }, ['fcmToken', 'fcmTokens', 'fcmUpdatedAt']);
+    // Keep ONLY the latest token. iOS mints a fresh token on every re-sync and the old
+    // one can linger as a 'ghost' that still accepts sends — accumulating them made every
+    // cron push 2-3x to the same phone (the duplicate-morning-ping bug). One device, one token.
+    mutate((p) => ({ ...p, fcmToken: token, fcmTokens: [token], fcmUpdatedAt: new Date().toISOString() }),
+      ['fcmToken', 'fcmTokens', 'fcmUpdatedAt']);
   }, [mutate]);
 
   const addPlan = useCallback((title, pk = 'fun', note = '') => {
@@ -311,8 +314,16 @@ export function useLifeData(user) {
           })),
         });
       }
-      return { ...p, todayItems, plans };
-    }, ['todayItems', 'plans']);
+      // Ledger the completed title so the daily generator + brief never resurface it,
+      // even for items with no matching plan task. Keep ~21 days, dedup by title.
+      let doneLedger = p.doneLedger || [];
+      if (item && nowDone) {
+        const cutoff = new Date(Date.now() - 21 * 86400 * 1000).toISOString();
+        doneLedger = [{ title: item.title, at: new Date().toISOString() },
+          ...doneLedger.filter((e) => e.title !== item.title && (e.at || '') > cutoff)].slice(0, 80);
+      }
+      return { ...p, todayItems, plans, doneLedger };
+    }, ['todayItems', 'plans', 'doneLedger']);
   }, [mutate]);
 
   // One-tap from an alert (or anywhere): put a concrete item on today's list.
@@ -338,6 +349,10 @@ export function useLifeData(user) {
 
   const setAlertPref = useCallback((type, on) => {
     mutate((p) => ({ ...p, alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ainews: true, ...(p.alertPrefs || {}), [type]: on } }), ['alertPrefs']);
+  }, [mutate]);
+
+  const setSetting = useCallback((key, val) => {
+    mutate((p) => ({ ...p, settings: { aiProvider: 'openai', briefHour: 7, quietStart: 21, quietEnd: 7, ...(p.settings || {}), [key]: val } }), ['settings']);
   }, [mutate]);
 
   // Per-item 👍/👎 inside a content alert. `items` is the rendered list (covers
@@ -383,7 +398,7 @@ export function useLifeData(user) {
     setLocation, setFcmToken, setCommitments, setEmergency,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
-    setAlertPref, setAlertItemFeedback,
+    setAlertPref, setAlertItemFeedback, setSetting,
     submitDayPlan,
   };
 }

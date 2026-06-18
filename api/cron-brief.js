@@ -8,21 +8,22 @@
 // vercel.json schedules this; Vercel sends "Authorization: Bearer ${CRON_SECRET}".
 // Required env: CRON_SECRET, OPENAI_API_KEY, FIREBASE_SERVICE_ACCOUNT
 
-import OpenAI from 'openai';
+import { llmChat, pickProvider } from './_llm.js';
+import { briefHour, etHour, inQuietHours } from './_prefs.js';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
-const MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
 const LINK = 'https://mikeslife.app/?source=push&focus=brief';
 
 const easternYMD = (dt = new Date()) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
 
 // Same roll-forward the app does client-side (whoever runs first today wins).
-function rollTodayItems(prev, plans, today) {
+function rollTodayItems(prev, plans, today, doneLedger) {
   const old = prev || [];
+  const recentlyDone = new Set((doneLedger || []).map((e) => e.title));
   const kept = [];
   for (const t of old) {
     if (t.status === 'delayed' && t.until && t.until > today) kept.push(t);
@@ -36,7 +37,7 @@ function rollTodayItems(prev, plans, today) {
     for (const p of active) {
       const open = (p.stages || []).flatMap((s) => s.tasks || []).filter((x) => !x.done);
       const task = open[round];
-      if (!task || titles.has(task.text)) continue;
+      if (!task || titles.has(task.text) || recentlyDone.has(task.text)) continue;
       titles.add(task.text);
       fresh.push({ id: 'td' + Date.now() + '_' + fresh.length, title: task.text, why: p.title, pk: p.pk, planId: p.id, status: 'pending', until: null });
       if (visible + fresh.length >= 5) break outer;
@@ -50,7 +51,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'unauthorized' });
   }
   try {
-    if (!process.env.OPENAI_API_KEY || !process.env.FIREBASE_SERVICE_ACCOUNT) {
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT || (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY)) {
       return res.status(503).json({ error: 'not-configured' });
     }
     if (!getApps().length) initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
@@ -61,6 +62,9 @@ export default async function handler(req, res) {
 
     if (d.alertPrefs && d.alertPrefs.brief === false) {
       return res.status(200).json({ ok: true, skipped: 'briefs muted in app preferences' });
+    }
+    if (etHour() !== briefHour(d.settings)) {
+      return res.status(200).json({ ok: true, skipped: `not brief hour (want ${briefHour(d.settings)} ET)` });
     }
 
     // Idempotency — the mini (or an earlier invocation) may have already sent it.
@@ -73,7 +77,7 @@ export default async function handler(req, res) {
     let todayItems = d.todayItems || [];
     const patch = {};
     if (d.todayItemsDate !== today) {
-      todayItems = rollTodayItems(d.todayItems, d.plans, today);
+      todayItems = rollTodayItems(d.todayItems, d.plans, today, d.doneLedger);
       patch.todayItems = todayItems;
       patch.todayItemsDate = today;
     }
@@ -84,8 +88,11 @@ export default async function handler(req, res) {
     const ctx = [];
     ctx.push('Recurring commitments (NEVER schedule over these): ' + ((d.commitments && d.commitments.trim()) || DEFAULT_COMMITMENTS));
     if (openItems.length) ctx.push("Today's list (4-5 items, accept-or-delay model): " + openItems.map((t) => `${t.title} [${t.pk}${t.why ? ' · ' + t.why : ''}]`).join('; '));
-    const doneRecently = (d.todayItems || []).filter((t) => t.status === 'done').map((t) => t.title);
-    if (doneRecently.length) ctx.push('Recently completed: ' + doneRecently.join('; '));
+    const doneRecently = [...new Set([
+      ...(d.todayItems || []).filter((t) => t.status === 'done').map((t) => t.title),
+      ...((d.doneLedger || []).map((e) => e.title)),
+    ])];
+    if (doneRecently.length) ctx.push('Recently completed (DONE — never resurface these as focus or actions): ' + doneRecently.slice(0, 30).join('; '));
     const active = (d.plans || []).filter((p) => p.status === 'active');
     if (active.length) ctx.push('Active plans: ' + active.map((p) => p.title).join('; '));
     const stalled = active.filter((p) => p.updatedAt && (Date.now() - new Date(p.updatedAt).getTime()) > 14 * 86400 * 1000);
@@ -134,37 +141,42 @@ Week ahead:
 One question to sit with: ...
 Rules: short lines. Respect Mike's recurring commitments — never suggest anything that conflicts. Wins come from done items + plan activity in the context. Only include Health/Money lines supported by the context, and for Health never list a normal/'ok' lab — only abnormal/flagged results or care that is due. Surface time-sensitive items from Calendar/email (payments, RSVPs, replies, deadlines) in the relevant lines. The week-ahead picks come from active plans + today's list. End with one genuinely good reflective question. No preamble, no sign-off. ACCURACY (critical): state only facts that appear in the context. Never invent, round, or extrapolate numbers, dates, or events; if a Health/Money/Training fact isn't in the context, omit that line entirely rather than guessing. When the context gives a date for a fact, keep it so nothing reads as more current than it is.`;
 
-    const SYS = isSunday ? SYS_WEEKLY : `You are Rupert, Mike's chief of staff. Write a SHORT morning brief he reads on his phone. Include ONLY the sections that have real content — silently drop any section that would be empty. Shape:
-Good morning Mike.
+    const SYS = isSunday ? SYS_WEEKLY : `You are Rupert, Mike's chief of staff. Write Mike's morning rundown — warm, specific, and phone-readable, in the spirit of a sharp aide who actually read his inbox and calendar. Use concrete details (names, dates, amounts, addresses, tracking numbers, IDs) when the context provides them. Include ONLY sections that have real content — silently drop any that would be empty. Shape EXACTLY:
+Good morning Mike — your daily rundown.
 Top of mind:
-- <time-sensitive, concrete actions due in the next ~5 days, each WITH its date — mined from Calendar, Recent email, and Finances: payments/auto-drafts, RSVPs, meetings to prep for, emails awaiting your reply, hard deadlines>
+- <the few genuinely time-sensitive, act-on-able things in the next ~5 days, each WITH its date — mined from Calendar, Recent email and Finances: payments/auto-drafts, RSVPs, replies awaited, deadlines, appointments to prep for. One sentence each, lead with the verb.>
 Today's focus:
 🥇 ...
 🥈 ...
 🥉 ...
 Health & Training:
-- <ONLY abnormal/⚠-flagged labs or preventive care that is due/overdue — NEVER list a normal or 'ok' result>
-- <one concrete training suggestion grounded in recent workouts + current plan; suggest rest/recovery if he trained hard the last day or two>
+- <ONLY abnormal/⚠-flagged labs or preventive care that is due/overdue, each with its date — NEVER a normal/'ok' result>
+- <one concrete training line grounded in recent workouts + current plan; suggest recovery if he trained hard the last day or two>
 FYI:
-- <upcoming birthdays and low-priority heads-ups (renewals, notices) from Calendar/email>
-Recommended day:
-Morning → ...
-Afternoon → ...
-Evening → ...
+- <low-priority but useful heads-ups: confirmed reservations, birthdays, offers, renewals/notices from Calendar/email>
+Delivery updates:
+- <packages in transit pulled from shipping/tracking emails — what + carrier + ETA. OMIT this whole section if the context has no shipping email.>
+Looking ahead:
+<Short theme title in Title Case>
+<one line on why now is the moment>
+→ <a concrete next step>
+→ <a second concrete next step>
+<(up to 3 themes; each = bigger threads tied to his plans/pillars — autumn locum work, travel/upgrades, triathlon prep, the apps, finances, etc. — that aren't urgent today)>
 Rules:
-- "Top of mind" is the most important section: actively scan Calendar + Recent email + Finances for anything time-sensitive and act-on-able, and lead with it. Each item dated. Skip the section only if genuinely nothing is pending.
-- Today's focus: exactly 3 items drawn from active plans + today's list. ANTI-REPEAT (critical): do NOT just re-list the focus items shown in recent briefs — vary them, and if a plan item has recurred for days with no progress, retire it or convert it to a single gentle "still open, or already handled?" nudge instead of parroting it.
-- Health & Training: never surface normal/'ok' labs. Only mention a lab if it's abnormal/flagged or care is due. Always include one training line whenever any training data exists.
-- Respect Mike's recurring commitments — never suggest a focus, event, or day-block that conflicts (e.g. a Wed/Thu evening plan).
-- Keep every line short and phone-readable. No preamble, no sign-off.
-ACCURACY (critical): state only facts that appear in the context. Never invent, round, or extrapolate numbers, dates, or events; if a fact isn't in the context, omit it. Keep any date the context attaches to a fact so nothing reads as more current than it is.`;
+- "Top of mind" is the most important section: actively scan Calendar + Recent email + Finances for anything time-sensitive and act-on-able and lead with it, each dated. Skip the section only if truly nothing is pending.
+- Today's focus: EXACTLY 3 items drawn from active plans + today's list, each on its own 🥇/🥈/🥉 line. ANTI-REPEAT (critical): do NOT just re-list focus items shown in recent briefs — vary them; if an item has recurred for days with no progress, retire it or convert it to one gentle "still open, or already handled?" nudge. NEVER list anything in 'Recently completed'.
+- Health & Training: never surface normal/'ok' labs. Always include one training line whenever any training data exists.
+- "Looking ahead" themes must NOT duplicate Top-of-mind items — these are the slower-burning threads, each with a crisp rationale and 1-2 "→" next steps.
+- Respect Mike's recurring commitments — never suggest a focus, event, or day-block that conflicts (e.g. a Wed/Thu evening plan in Charlotte).
+- Keep every line short. No preamble before "Good morning", no sign-off.
+ACCURACY (critical): state only facts that appear in the context. Never invent, round, or extrapolate numbers, dates, tracking IDs, or events; if a fact isn't in the context, omit it. Keep any date the context attaches to a fact so nothing reads as more current than it is.`;
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}) });
-    const completion = await openai.chat.completions.create({
-      model: MODEL,
-      messages: [{ role: 'system', content: `Today is ${today}. ` + SYS }, { role: 'user', content: 'Context:\n' + (ctx.join('\n\n') || 'No data yet.') }],
-    });
-    const brief = (completion.choices?.[0]?.message?.content || '').trim();
+    const brief = (await llmChat({
+      provider: pickProvider(d.settings),
+      system: `Today is ${today}. ` + SYS,
+      messages: [{ role: 'user', content: 'Context:\n' + (ctx.join('\n\n') || 'No data yet.') }],
+      maxTokens: 1800,
+    })).trim();
     const at = new Date().toISOString();
 
     const alertId = 'a' + Date.now();
@@ -186,7 +198,7 @@ ACCURACY (critical): state only facts that appear in the context. Never invent, 
     } catch (e) { console.error('backup failed:', e.message); }
 
     const firstLine = brief.split('\n')[0] || 'Your morning brief';
-    const tokens = Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));
+    const tokens = inQuietHours(d.settings) ? [] : Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));
     let pushed = 0;
     for (const token of tokens) {
       try {

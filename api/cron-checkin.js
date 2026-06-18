@@ -6,6 +6,7 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { briefHour, etHour, inQuietHours } from './_prefs.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const LINK = 'https://mikeslife.app/?source=push&focus=checkin';
@@ -21,6 +22,9 @@ export default async function handler(req, res) {
     if (!getApps().length) initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
     const d = (await getFirestore().doc(`lifeos/${OWNER_UID}`).get()).data() || {};
     if (d.alertPrefs && d.alertPrefs.brief === false) return res.status(200).json({ ok: true, skipped: 'muted' });
+    // Runs hourly; only nudge at the user's chosen brief hour (Settings), and never during quiet hours.
+    if (etHour() !== briefHour(d.settings)) return res.status(200).json({ ok: true, skipped: `not brief hour (want ${briefHour(d.settings)} ET)` });
+    if (inQuietHours(d.settings)) return res.status(200).json({ ok: true, skipped: 'quiet hours' });
     if (d.dayPlan && d.dayPlan.date === easternYMD()) return res.status(200).json({ ok: true, skipped: 'plan already submitted' });
 
     const tokens = Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));

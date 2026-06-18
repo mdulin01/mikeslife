@@ -10,13 +10,12 @@
 //   OPENAI_BASE_URL (set if Rupert routes gpt-5.5 through a gateway)
 //   OWNER_UID       (default below)
 
-import OpenAI from 'openai';
+import { llmChat, pickProvider } from './_llm.js';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
-const MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
 
 const DEFAULT_COMMITMENTS = 'In Charlotte working at Rea Farms every Wednesday and Thursday — NOT available for evening plans or dinners on Wed/Thu nights.';
 
@@ -86,8 +85,8 @@ function buildContext(d) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   try {
-    if (!process.env.OPENAI_API_KEY || !process.env.FIREBASE_SERVICE_ACCOUNT) {
-      return res.status(503).json({ error: 'not-configured', message: "Rupert's brain isn't wired yet — add OPENAI_API_KEY + FIREBASE_SERVICE_ACCOUNT in Vercel." });
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT || (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY)) {
+      return res.status(503).json({ error: 'not-configured', message: "Rupert's brain isn't wired yet — add FIREBASE_SERVICE_ACCOUNT and an OPENAI_API_KEY or ANTHROPIC_API_KEY in Vercel." });
     }
     ensureAdmin();
 
@@ -98,21 +97,20 @@ export default async function handler(req, res) {
     if (decoded.uid !== OWNER_UID) return res.status(403).json({ error: 'not authorized' });
 
     const snap = await getFirestore().doc(`lifeos/${decoded.uid}`).get();
-    const context = buildContext(snap.exists ? snap.data() : null);
-
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      ...(process.env.OPENAI_BASE_URL ? { baseURL: process.env.OPENAI_BASE_URL } : {}),
-    });
+    const docData = snap.exists ? snap.data() : null;
+    const context = buildContext(docData);
+    const provider = pickProvider(docData && docData.settings);
 
     const messages = [
-      { role: 'system', content: `${SYSTEM}\n\n=== Mike's current context ===\n${context}` },
       ...history.slice(-8).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') })),
       { role: 'user', content: String(message) },
     ];
 
-    const completion = await openai.chat.completions.create({ model: MODEL, messages });
-    const reply = completion.choices?.[0]?.message?.content?.trim() || '…';
+    const reply = (await llmChat({
+      provider,
+      system: `${SYSTEM}\n\n=== Mike's current context ===\n${context}`,
+      messages,
+    })) || '…';
     return res.status(200).json({ reply });
   } catch (e) {
     console.error('rupert error', e);
