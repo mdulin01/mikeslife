@@ -39,6 +39,7 @@ function tagFor(from, subject) {
   if (/recruit|opportunit|position|role|cmo|interview|linkedin/.test(s)) return ['🎯 CAREER', '--violet', 'Inbound opportunity → ', 'screen in People'];
   if (/invoice|statement|payment|bank|tax|irs|bill|due/.test(s)) return ['💰 FINANCE', '--amber', 'Money → ', 'check mikes-money'];
   if (/appointment|lab|doctor|clinic|results|rx|pharmacy/.test(s)) return ['🫀 HEALTH', '--emerald', 'Health → ', 'check mikeshealth'];
+  if (/shipp|out for delivery|on its way|tracking|delivered|fedex|ups\b|usps|dhl|package|order (confirm|shipped)/.test(s)) return ['📦 DELIVERY', '--sky', 'Delivery → ', 'track'];
   return ['📬 INBOX', '--mut', 'FYI → ', 'triage'];
 }
 
@@ -100,26 +101,63 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── Gmail: recent primary-ish headers → signals ──
-    const list = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?' + new URLSearchParams({
-      q: 'newer_than:2d -category:promotions -category:social -category:forums', maxResults: '12',
-    }), at);
+    // ── Gmail: recent inbox (wider window + snippets) → signals + brief text ──
+    // Two passes: (1) the primary 3-day inbox minus social/forums/promotions, and
+    // (2) a dedicated 6-day shipping sweep across Updates/Promotions so deliveries
+    // (which Gmail tucks into those tabs) still surface. Snippets give the brief the
+    // substance it needs to mine specifics (RSVPs, due dates, tracking, amounts).
+    const shortDate = (val) => { try { const p = etParts(new Date(val)); return `${p.weekday} ${p.month}/${p.day}`; } catch { return ''; } };
+    const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
+
+    const PRIMARY_Q = 'newer_than:3d -category:social -category:forums -category:promotions';
+    const SHIP_Q = 'newer_than:6d (shipped OR "out for delivery" OR "on its way" OR tracking OR delivered OR "order confirmed" OR "has shipped")';
+    const [list, shipList] = await Promise.all([
+      gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?' + new URLSearchParams({ q: PRIMARY_Q, maxResults: '30' }), at),
+      gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?' + new URLSearchParams({ q: SHIP_Q, maxResults: '10' }), at),
+    ]);
+    const primaryIds = (list.messages || []).map((m) => m.id);
+    const primarySet = new Set(primaryIds);
+    const shipIds = (shipList.messages || []).map((m) => m.id).filter((id) => !primarySet.has(id));
+
+    const getMeta = (id) => gFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, at);
+    const [primaryMsgs, shipMsgs] = await Promise.all([
+      Promise.all(primaryIds.map((id) => getMeta(id).catch(() => null))),
+      Promise.all(shipIds.map((id) => getMeta(id).catch(() => null))),
+    ]);
+
+    const parse = (msg) => {
+      const h = Object.fromEntries((msg.payload?.headers || []).map((x) => [x.name, x.value]));
+      return {
+        from: clean((h.From || '').replace(/<.*>/, '').replace(/"/g, '')).slice(0, 32),
+        subject: clean(h.Subject || '(no subject)').slice(0, 90),
+        snippet: clean(msg.snippet || '').slice(0, 160),
+        date: shortDate(h.Date),
+        fromRaw: h.From || '',
+      };
+    };
+
     const emailSignals = [];
     const mailLines = [];
     const tradeHits = [];
     const mailSeen = new Set(d0.financeMailSeen || []);
-    for (const m of (list.messages || []).slice(0, 12)) {
-      const msg = await gFetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`, at);
-      const h = Object.fromEntries((msg.payload?.headers || []).map((x) => [x.name, x.value]));
-      const from = (h.From || '').replace(/<.*>/, '').replace(/"/g, '').trim().slice(0, 30);
-      const subject = (h.Subject || '(no subject)').slice(0, 70);
-      const [tag, accent, hint, act] = tagFor(h.From || '', subject);
-      if (tag !== '📬 INBOX' && emailSignals.length < 8) emailSignals.push({ tag, accent, from, subject, hint, act });
-      mailLines.push(`${from}: ${subject}`);
-      if (!mailSeen.has(m.id) && FIN_SENDER_RE.test(h.From || '') && TRADE_RE.test(subject)) {
-        tradeHits.push(`${from}: ${subject}`);
-        mailSeen.add(m.id);
+    for (let i = 0; i < primaryMsgs.length; i++) {
+      const msg = primaryMsgs[i]; if (!msg) continue;
+      const e = parse(msg);
+      const [tag, accent, hint, act] = tagFor(e.fromRaw, e.subject);
+      if (tag !== '📬 INBOX' && emailSignals.length < 12) emailSignals.push({ tag, accent, from: e.from, subject: e.subject, hint, act });
+      mailLines.push(`[${e.date}] ${e.from} — ${e.subject}${e.snippet ? ' — ' + e.snippet : ''}`);
+      if (!mailSeen.has(primaryIds[i]) && FIN_SENDER_RE.test(e.fromRaw) && TRADE_RE.test(e.subject)) {
+        tradeHits.push(`${e.from}: ${e.subject}`);
+        mailSeen.add(primaryIds[i]);
       }
+    }
+
+    const deliveryLines = [];
+    for (const msg of shipMsgs) {
+      if (!msg) continue;
+      const e = parse(msg);
+      deliveryLines.push(`[${e.date}] ${e.from} — ${e.subject}${e.snippet ? ' — ' + e.snippet : ''}`);
+      if (emailSignals.length < 12) { const [tag, accent, hint, act] = tagFor(e.fromRaw, e.subject); emailSignals.push({ tag: '📦 DELIVERY', accent: '--sky', from: e.from, subject: e.subject, hint: 'Delivery → ', act: 'track' }); }
     }
 
     // Trade/large-txn emails → a pushed 💰 alert (unless finance alerts are muted).
@@ -149,11 +187,12 @@ export default async function handler(req, res) {
       calendar: { weekEvents, updatedAt: new Date().toISOString() },
       calendarText: calLines.slice(0, 25).join('\n') || 'No events in the next 7 days.',
       ...(emailSignals.length ? { emailSignals } : {}),
-      emailText: mailLines.slice(0, 12).join('\n') || 'No recent mail.',
+      emailText: (mailLines.slice(0, 30).join('\n') || 'No recent mail.')
+        + (deliveryLines.length ? '\n\nShipments / deliveries in transit:\n' + deliveryLines.slice(0, 10).join('\n') : ''),
       googleSyncedAt: new Date().toISOString(),
     }, { merge: true });
 
-    return res.status(200).json({ ok: true, events: calLines.length, signals: emailSignals.length, mails: mailLines.length, tradeAlerts: tradeHits.length });
+    return res.status(200).json({ ok: true, events: calLines.length, signals: emailSignals.length, mails: mailLines.length, deliveries: deliveryLines.length, tradeAlerts: tradeHits.length });
   } catch (e) {
     console.error('cron-google error', e);
     return res.status(500).json({ error: e.message || 'error' });
