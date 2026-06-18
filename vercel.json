@@ -67,6 +67,18 @@
     {
       "path": "/api/cron-rentals-bridge",
       "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/cron-finance-note",
+      "schedule": "30 23 * * *"
+    },
+    {
+      "path": "/api/cron-rental-note",
+      "schedule": "40 23 * * *"
+    },
+    {
+      "path": "/api/cron-heartbeat",
+      "schedule": "0 14 * * *"
     }
   ]
 }
