@@ -14,7 +14,6 @@ import { getMessaging } from 'firebase-admin/messaging';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const THRESHOLD = Number(process.env.LARGE_TXN_THRESHOLD || 500);
-const LINK = 'https://mikeslife.app/?source=push&focus=content';
 const MONEY_APP = 'https://www.mikesmoney.app/transactions';
 
 const easternYMD = (dt = new Date()) =>
@@ -124,8 +123,8 @@ export default async function handler(req, res) {
         await getMessaging().send({
           token,
           notification: { title: '💰 Money watch', body: lines[0].slice(0, 180) },
-          data: { url: LINK },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
+          data: { url: MONEY_APP },
+          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: MONEY_APP } },
         });
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
