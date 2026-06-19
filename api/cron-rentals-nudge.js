@@ -12,6 +12,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 
 const LIAM_EMAIL = 'dulinliam@gmail.com';
 const MIKE_EMAIL = 'mdulin@gmail.com';
+const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const ET = 'America/New_York';
 
 function isoWeekId(d = new Date()) {
@@ -31,6 +32,10 @@ export default async function handler(req, res) {
     let app; try { app = getApp('rainbow'); } catch { app = initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SA_RAINBOW)) }, 'rainbow'); }
     const db = getFirestore(app);
     const msg = getMessaging(app);
+    // mikeslife (default) app — Mike's real, working push tokens live in lifeos/{uid}.
+    if (process.env.FIREBASE_SERVICE_ACCOUNT && !getApps().some((a) => a.name === '[DEFAULT]')) {
+      initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
+    }
 
     // weekday in ET (Thu=4)
     const wd = new Intl.DateTimeFormat('en-US', { timeZone: ET, weekday: 'short' }).format(new Date());
@@ -58,17 +63,33 @@ export default async function handler(req, res) {
       } catch (e) { out.liamErr = e.message; }
     }
 
-    // 2) Mike "Liam done" — once
-    if (doneThisWeek && weekly.mikeNotified === false && byEmail[MIKE_EMAIL]) {
+    // 2) Mike "Liam done" — once. Primary = Mike's REAL mikeslife tokens (lifeos/{uid});
+    //    fall back to a rainbow-rentals pushTokens entry if present. (The instant
+    //    /api/liam-done endpoint usually handles this; this cron is the daily backstop.)
+    if (doneThisWeek && weekly.mikeNotified !== true) {
+      let mikeTokens = [];
       try {
-        await msg.send({
-          token: byEmail[MIKE_EMAIL],
-          notification: { title: '✅ Liam finished the rental updates', body: 'This week’s rents/leases/expenses are recorded — remember to pay Liam.' },
-          webpush: { notification: { icon: '/icon-192.png' }, fcmOptions: { link: 'https://rainbowrentals.app/?source=push' } },
-        });
-        await db.doc('rentalData/liamWeekly').set({ mikeNotified: true }, { merge: true });
+        if (getApps().some((a) => a.name === '[DEFAULT]')) {
+          const ml = (await getFirestore().doc(`lifeos/${OWNER_UID}`).get()).data() || {};
+          mikeTokens = [...new Set([ml.fcmToken, ...(ml.fcmTokens || [])].filter(Boolean))];
+        }
+      } catch (e) { out.mikeTokenErr = e.message; }
+      if (!mikeTokens.length && byEmail[MIKE_EMAIL]) mikeTokens = [byEmail[MIKE_EMAIL]];
+      let pushedMike = 0;
+      for (const token of mikeTokens) {
+        try {
+          await msg.send({
+            token,
+            notification: { title: '✅ Liam finished the rental updates', body: 'This week’s rents/leases/expenses are recorded — remember to pay Liam.' },
+            webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: 'https://rainbowrentals.app/?source=push' } },
+          });
+          pushedMike++;
+        } catch (e) { out.mikeErr = e.message; }
+      }
+      if (pushedMike > 0) {
+        await db.doc('rentalData/liamWeekly').set({ mikeNotified: true, mikeNotifiedAt: new Date().toISOString() }, { merge: true });
         out.pushedMike = true;
-      } catch (e) { out.mikeErr = e.message; }
+      } else if (!mikeTokens.length) { out.mikeErr = 'no tokens (mikeslife or rainbow)'; }
     }
 
     return res.status(200).json({ ok: true, ...out });
