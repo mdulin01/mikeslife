@@ -168,20 +168,27 @@ export default async function handler(req, res) {
       ].slice(0, 120),
     }, { merge: true });
 
-    const tokens = Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));
+    // Regenerate freely under force, but NEVER notify twice for the same content type
+    // in one day — re-running the morning check-in re-forces ainews/recipes, and that
+    // was double-pinging the phone. Refresh the feed silently; only push if nothing of
+    // this type went out yet today.
+    const shouldPush = !dupe;
+    const tokens = [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean); // newest single token
     let pushed = 0;
-    for (const token of tokens) {
-      try {
-        await getMessaging().send({
-          token,
-          notification: { title: TITLES[slot], body: items.map((it) => it.t).join(' · ').slice(0, 180) },
-          data: { url: link },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
-        });
-        pushed++;
-      } catch (e) { console.error('push failed:', e.message); }
+    if (shouldPush) {
+      for (const token of tokens) {
+        try {
+          await getMessaging().send({
+            token,
+            notification: { title: TITLES[slot], body: items.map((it) => it.t).join(' · ').slice(0, 180) },
+            data: { url: link },
+            webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
+          });
+          pushed++;
+        } catch (e) { console.error('push failed:', e.message); }
+      }
     }
-    return res.status(200).json({ ok: true, slot, pushed, items: items.length });
+    return res.status(200).json({ ok: true, slot, pushed, deduped: !shouldPush, items: items.length });
   } catch (e) {
     console.error('cron-content error', e);
     return res.status(500).json({ error: e.message || 'error' });

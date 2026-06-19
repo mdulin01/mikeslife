@@ -66,7 +66,7 @@ nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
 /* floating dock (mobile) — translucent pill, spectrum indicator */
 .dock{display:none}
 @media(max-width:760px){
-  .dock{position:fixed;left:50%;transform:translateX(-50%) translateZ(0);will-change:transform;bottom:calc(12px + env(safe-area-inset-bottom));z-index:90;display:flex;align-items:center;gap:3px;
+  .dock{position:fixed;left:50%;transform:translateX(-50%) translateY(calc(-1 * var(--vvb,0px))) translateZ(0);will-change:transform;bottom:calc(12px + env(safe-area-inset-bottom));z-index:90;display:flex;align-items:center;gap:3px;
     background:rgba(13,20,32,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
     border:1px solid rgba(90,110,140,.4);border-radius:999px;padding:7px 11px;box-shadow:0 12px 38px rgba(0,0,0,.6);max-width:calc(100vw - 24px)}
   .dock-item{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--mut);
@@ -77,8 +77,14 @@ nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
     background:linear-gradient(90deg,#e40303,#ff8c00,#ffd700,#008026,#3b82f6,#732982)}
   .dock-badge{position:absolute;top:0;right:2px;background:var(--teal);color:#04201c;font-size:8.5px;font-weight:800;border-radius:999px;padding:0 4px;line-height:1.5}
 }
-.more-sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:78px;z-index:91;background:rgba(16,24,39,.97);backdrop-filter:blur(16px);
+.more-sheet{position:fixed;left:50%;transform:translateX(-50%) translateY(calc(-1 * var(--vvb,0px)));bottom:78px;z-index:91;background:rgba(16,24,39,.97);backdrop-filter:blur(16px);
   border:1px solid var(--line);border-radius:16px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;box-shadow:0 18px 50px rgba(0,0,0,.6)}
+
+/* check-in candidate chip + its delete-for-good ✕ */
+.candwrap{display:inline-flex;align-items:stretch;gap:0}
+.canddel{background:var(--panel2);border:1px solid var(--line);border-left:none;color:var(--dim);
+  border-radius:0 999px 999px 0;padding:0 9px;margin-left:-2px;font-size:12px;cursor:pointer;line-height:1}
+.canddel:hover{color:var(--rose);border-color:var(--rose)}
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px 17px;margin-bottom:12px}
 .card h3{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut);margin-bottom:11px;font-weight:700}
@@ -127,10 +133,16 @@ textarea{min-height:88px;resize:vertical;line-height:1.5}
 .person .pa{font-size:11px;font-weight:700;color:var(--teal);white-space:nowrap}
 .subhead{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--teal);margin:0 0 6px}
 
-.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
-.day{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:8px 6px;min-height:120px}
+/* Horizontally swipeable agenda — drag/scroll to see earlier & later days.
+   Each day is a fixed-width snap target so events stay readable on a phone. */
+.week{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;
+  padding-bottom:8px;scrollbar-width:thin}
+.week::-webkit-scrollbar{height:6px}
+.week::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+.day{flex:0 0 138px;scroll-snap-align:start;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:8px 8px;min-height:120px}
 .day .dh{font-size:11px;color:var(--dim);font-weight:700;text-align:center;margin-bottom:6px}
-.day.today{border-color:var(--teal)}
+.day.today{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal)}
+.day.empty .dh{opacity:.6}
 .ev{font-size:10.5px;border-radius:6px;padding:4px 6px;margin-bottom:4px;line-height:1.25;color:#04101a;font-weight:600}
 .ev.prop{background:transparent;border:1px dashed var(--c,#64748b);color:var(--txt)}
 .evcal{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--mut);margin-top:10px}

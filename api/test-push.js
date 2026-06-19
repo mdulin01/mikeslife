@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     if (decoded.uid !== OWNER_UID) return res.status(403).json({ error: 'not authorized' });
 
     const d = (await getFirestore().doc(`lifeos/${OWNER_UID}`).get()).data() || {};
-    const tokens = Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));
+    const tokens = [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean);
     if (!tokens.length) return res.status(200).json({ ok: false, reason: 'no tokens stored — tap Enable/Re-sync first', tokens: 0 });
 
     const results = [];

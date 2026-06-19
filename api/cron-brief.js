@@ -198,7 +198,7 @@ ACCURACY (critical): state only facts that appear in the context. Never invent, 
     } catch (e) { console.error('backup failed:', e.message); }
 
     const firstLine = brief.split('\n')[0] || 'Your morning brief';
-    const tokens = inQuietHours(d.settings) ? [] : Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));
+    const tokens = inQuietHours(d.settings) ? [] : [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean);
     let pushed = 0;
     for (const token of tokens) {
       try {

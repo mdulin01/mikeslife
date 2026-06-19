@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     if (inQuietHours(d.settings)) return res.status(200).json({ ok: true, skipped: 'quiet hours' });
     if (d.dayPlan && d.dayPlan.date === easternYMD()) return res.status(200).json({ ok: true, skipped: 'plan already submitted' });
 
-    const tokens = Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));
+    const tokens = [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean);
     let pushed = 0;
     for (const token of tokens) {
       try {

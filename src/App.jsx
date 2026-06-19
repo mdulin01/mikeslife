@@ -346,9 +346,9 @@ const DELAYS = [['1 day', 1], ['1 week', 7], ['1 month', 30]];
 
 // Daily roll-forward: sleeping delays stay hidden, due delays resurface,
 // yesterday's done/untouched items drop, fresh items come from active plans.
-function generateTodayItems(prev, plans, today, doneLedger) {
+function generateTodayItems(prev, plans, today, doneLedger, dismissed) {
   const old = prev || [];
-  const recentlyDone = new Set((doneLedger || []).map((e) => e.title));
+  const recentlyDone = new Set([...(doneLedger || []), ...(dismissed || [])].map((e) => e.title));
   const kept = [];
   for (const t of old) {
     if (t.status === 'delayed' && t.until && t.until > today) kept.push(t);
@@ -414,7 +414,7 @@ function StepDialog({ step, onClose, setTaskNote, toggleTask, markTodayDone }) {
   );
 }
 
-function TodayItemRow({ t, onDone, onDelay, onStep }) {
+function TodayItemRow({ t, onDone, onDelay, onStep, onDelete }) {
   const [menu, setMenu] = useState(false);
   const done = t.status === 'done';
   return (
@@ -427,6 +427,7 @@ function TodayItemRow({ t, onDone, onDelay, onStep }) {
       <div className="row" style={{ gap: 6, flex: '0 0 auto', position: 'relative', alignItems: 'center' }}>
         <button className="btn app" title={done ? 'Undo' : 'Done'} style={{ padding: '5px 11px', fontSize: 12 }} onClick={() => onDone(t.id)}>{done ? '↩︎' : '✓'}</button>
         {!done && <button className="btn def" title="Delay" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => setMenu(!menu)}>⏰</button>}
+        {!done && onDelete && <button className="btn def" title="Delete — won't come back" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => onDelete(t)}>🗑</button>}
         {menu && (
           <div style={{ position: 'absolute', right: 0, top: '108%', zIndex: 60, background: 'var(--panel2)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden', boxShadow: '0 6px 18px rgba(0,0,0,.4)' }}>
             {DELAYS.map(([label, days]) => (
@@ -592,14 +593,18 @@ function RankList({ items, setItems }) {
   );
 }
 
-function CheckInView({ data, submitDayPlan, saveCheckin, onDone }) {
+function CheckInView({ data, submitDayPlan, saveCheckin, onDone, dismissTask }) {
   const today = easternYMD();
   const dow = new Date(new Date().toLocaleString('en-US', { timeZone: EASTERN })).getDay();
   const fc = data.fitnessContext;
 
   // Plan/task candidates (pending items + fresh steps from active plans).
+  // Titles on the done or dismissed ledgers never reappear here — that's the
+  // "I deleted 'Ask Josh' but it keeps coming back" fix.
   const initialCands = () => {
-    const out = []; const seen = new Set();
+    const out = [];
+    const hidden = new Set([...(data.doneLedger || []), ...(data.dismissed || [])].map((e) => e.title));
+    const seen = new Set(hidden);
     for (const t of (data.todayItems || [])) if (t.status === 'pending' && !seen.has(t.title)) { seen.add(t.title); out.push({ ...t, icon: '📌' }); }
     const active = (data.plans || []).filter((p) => p.status === 'active');
     outer: for (let round = 0; round < 5; round++) {
@@ -614,7 +619,7 @@ function CheckInView({ data, submitDayPlan, saveCheckin, onDone }) {
     }
     return out;
   };
-  const [cands] = useState(initialCands);
+  const [cands, setCands] = useState(initialCands);
 
   // One unified ordered selection (exercise recs first — health is the priority).
   const wellnessItem = (w, sec) => ({ id: w.id, title: w.title, icon: w.icon, why: w.why ? w.why(dow) : sec.section.replace(/^[^ ]+ /, ''), pk: sec.pk, status: 'pending', until: null });
@@ -624,6 +629,12 @@ function CheckInView({ data, submitDayPlan, saveCheckin, onDone }) {
     for (const c of cands.slice(0, 2)) out.push(c);
     return out;
   });
+  // Delete a candidate for good: drop it here + record it on the dismissed ledger.
+  const dropCand = (c) => {
+    setCands((list) => list.filter((x) => x.id !== c.id));
+    setPicked((list) => list.filter((x) => x.id !== c.id));
+    if (dismissTask) dismissTask({ title: c.title, planId: c.planId, id: c.id });
+  };
   const [jobs, setJobs] = useState(() => RUPERT_JOBS.filter((j) => j.recDays.includes(dow)).map((j) => j.kind));
   const [busy, setBusy] = useState(false);
   const c0 = data.checkin && data.checkin.date === today ? data.checkin : {};
@@ -684,10 +695,15 @@ function CheckInView({ data, submitDayPlan, saveCheckin, onDone }) {
       ))}
 
       <div className="card">
-        <h3 style={{ marginBottom: 8 }}>📌 Tasks & plans</h3>
+        <h3 style={{ marginBottom: 8 }}>📌 Tasks & plans <span className="dim" style={{ fontWeight: 500, textTransform: 'none', fontSize: 12 }}>· tap to add · ✕ to delete for good</span></h3>
         <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
           {cands.length ? cands.map((c, i) => (
-            <Chip key={c.id} on={isPicked(c.id)} rec={i < 2} onClick={() => togglePick(c)}>{c.title.slice(0, 40)}</Chip>
+            <span key={c.id} className="candwrap">
+              <Chip on={isPicked(c.id)} rec={i < 2} onClick={() => togglePick(c)}>
+                {c.title.slice(0, 40)}{c.why ? <span className="dim" style={{ fontWeight: 500 }}> · {String(c.why).slice(0, 22)}</span> : null}
+              </Chip>
+              <button className="canddel" title="Delete this task — it won't come back" onClick={() => dropCand(c)}>✕</button>
+            </span>
           )) : <p className="dim" style={{ fontSize: 13 }}>No open plan steps — activate a plan in Planning.</p>}
         </div>
       </div>
@@ -736,7 +752,7 @@ function RupertTaskStrip({ dayPlan, alerts, onOpenAlert }) {
   );
 }
 
-function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab, onPlanMore, setTaskNote, toggleTask, setPlanStatus }) {
+function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab, onPlanMore, setTaskNote, toggleTask, setPlanStatus, dismissTask }) {
   const [showDone, setShowDone] = useState(false);
   const brief = data && data.todayBrief && data.todayBrief.text;
   const alerts = (data && data.alerts) || [];
@@ -754,7 +770,7 @@ function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, 
       {/* 🎯 Today — the action center, open by default */}
       <Collapse icon="🎯" title="Today" right={openCount ? `${openCount} open` : ''} defaultOpen
         sub={items.length ? items.filter((t) => t.status === 'pending').map((t) => t.title).join(' · ').slice(0, 90) : null}>
-        {items.length ? items.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} onStep={stepHandler(t)} />)
+        {items.length ? items.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} onStep={stepHandler(t)} onDelete={dismissTask} />)
           : <p className="dim" style={{ fontSize: 13 }}>{doneItems.length ? 'All done — strong day. 🎉' : 'Nothing queued yet — tap ➕ Plan more or run the morning check-in.'}</p>}
         {doneItems.length > 0 && (
           <div style={{ marginTop: 8 }}>
@@ -935,19 +951,35 @@ function People({ people, addPerson, deletePerson, addPeople }) {
 }
 
 function Calendar({ data }) {
-  const live = !!(data.calendar && data.calendar.weekEvents);
-  const week = live ? data.calendar.weekEvents : WEEK_EVENTS;
+  const days = data.calendar && Array.isArray(data.calendar.days) ? data.calendar.days : null;
+  const live = !!days || !!(data.calendar && data.calendar.weekEvents);
+  const today = easternYMD();
+  const scroller = useRef(null);
+  // A single render model whether the data is the new date-keyed `days` array,
+  // the legacy weekday-bucketed `weekEvents`, or the preview seed.
+  const model = days
+    ? days.map((d) => ({ key: d.date, head: d.label, isToday: d.date === today,
+        events: (d.events || []).map((e) => Array.isArray(e) ? { t: e[0], c: e[1] === 'prop' ? e[2] : e[1], prop: e[1] === 'prop' } : { t: e.t, c: e.c, prop: !!e.prop }) }))
+    : WEEK_DAYS.map((lbl, i) => ({ key: i, head: lbl, isToday: false,
+        events: ((data.calendar && data.calendar.weekEvents ? data.calendar.weekEvents[i] : WEEK_EVENTS[i]) || [])
+          .map((e) => e[1] === 'prop' ? { t: e[0], c: e[2], prop: true } : { t: e[0], c: e[1], prop: false }) }));
+  // Center today when the live agenda loads, so "now" is the first thing Mike sees.
+  useEffect(() => {
+    const el = scroller.current; if (!el) return;
+    const t = el.querySelector('.day.today');
+    if (t) el.scrollLeft = Math.max(0, t.offsetLeft - 8);
+  }, [days]);
   return (
     <section>
-      <div className="section-title">This week · your 3 Google calendars, color-coded by pillar <span className="dim">{live ? '(live)' : '(preview)'}</span></div>
+      <div className="section-title">Your Google calendars, color-coded by pillar <span className="dim">{live ? '(live · swipe →)' : '(preview)'}</span></div>
       <div className="card">
-        <div className="week">
-          {WEEK_DAYS.map((d, i) => (
-            <div className={'day' + (i === 4 ? ' today' : '')} key={i}>
-              <div className="dh">{d}</div>
-              {(week[i] || []).map((e, j) => e[1] === 'prop'
-                ? <div className="ev prop" style={{ '--c': `var(${e[2]})` }} key={j}>{e[0]}</div>
-                : <div className="ev" style={{ background: `var(${e[1]})` }} key={j}>{e[0]}</div>)}
+        <div className="week" ref={scroller}>
+          {model.map((d) => (
+            <div className={'day' + (d.isToday ? ' today' : '') + (d.events.length ? '' : ' empty')} key={d.key}>
+              <div className="dh">{d.head}</div>
+              {d.events.map((e, j) => e.prop
+                ? <div className="ev prop" style={{ '--c': `var(${e.c})` }} key={j}>{e.t}</div>
+                : <div className="ev" style={{ background: `var(${e.c})` }} key={j}>{e.t}</div>)}
             </div>
           ))}
         </div>
@@ -1322,9 +1354,27 @@ export default function App() {
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken, setCommitments,
     setAlertFeedback, deleteAlert,
-    setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
+    setTodayItems, markTodayDone, delayTodayItem, addTodayItem, dismissTask,
     setAlertPref, setAlertItemFeedback, submitDayPlan, setSetting,
   } = useLifeData(user);
+
+  // Pin the floating dock to the *visual* viewport. iOS Safari positions
+  // position:fixed against the layout viewport, so when its toolbar animates in/out
+  // the dock appears to drift up/down the screen. We publish the gap between the
+  // layout- and visual-viewport bottoms as --vvb; the dock/more-sheet translate up by
+  // it to stay glued to the visible bottom edge. No-op on desktop/Android (gap ≈ 0).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    let raf = 0;
+    const apply = () => { raf = 0; root.style.setProperty('--vvb', Math.max(0, window.innerHeight - vv.height - vv.offsetTop) + 'px'); };
+    const onChange = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    vv.addEventListener('resize', onChange);
+    vv.addEventListener('scroll', onChange);
+    return () => { vv.removeEventListener('resize', onChange); vv.removeEventListener('scroll', onChange); if (raf) cancelAnimationFrame(raf); };
+  }, []);
 
   // Daily roll-forward of the Today list (client fallback — cron-brief also does this
   // server-side; whoever runs first today wins via the todayItemsDate guard).
@@ -1332,7 +1382,7 @@ export default function App() {
     if (!FIREBASE_READY || !user || !loaded) return;
     const today = easternYMD();
     if (data.todayItemsDate === today) return;
-    setTodayItems(generateTodayItems(data.todayItems, data.plans, today, data.doneLedger), today);
+    setTodayItems(generateTodayItems(data.todayItems, data.plans, today, data.doneLedger, data.dismissed), today);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, loaded, data.todayItemsDate]);
 
@@ -1529,7 +1579,7 @@ export default function App() {
       {tab === 'home' && <QuickCapture captures={data.captures} addCapture={addCapture} deleteCapture={deleteCapture} addTodayItem={addTodayItem} />}
 
       {focus === 'checkin' ? (
-        <CheckInView data={data} submitDayPlan={submitDayPlan} saveCheckin={saveCheckin} onDone={() => { setFocus(null); goTab('home'); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
+        <CheckInView data={data} submitDayPlan={submitDayPlan} saveCheckin={saveCheckin} dismissTask={dismissTask} onDone={() => { setFocus(null); goTab('home'); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
       ) : focus ? (
         <FocusView focus={focus} data={data} openRupert={openRupert} onOpenApp={() => { setFocus(null); try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ } }} />
       ) : openAlert ? (
@@ -1544,7 +1594,7 @@ export default function App() {
         <>
           {tab === 'home' && (
             <>
-              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} setPlanStatus={setPlanStatus} />
+              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} setPlanStatus={setPlanStatus} dismissTask={dismissTask} />
               {FIREBASE_READY && (
                 <div className="locrow">
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>

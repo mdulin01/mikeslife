@@ -57,7 +57,7 @@ export default async function handler(req, res) {
       ].slice(0, 120),
     }, { merge: true });
 
-    const tokens = Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));
+    const tokens = [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean);
     let pushed = 0;
     for (const token of tokens) {
       try {

@@ -76,30 +76,51 @@ export default async function handler(req, res) {
     if (!tr.ok) return res.status(502).json({ error: 'refresh-failed', detail: tok });
     const at = tok.access_token;
 
-    // ── Calendar: this week's events across all calendars ──
+    // ── Calendar: a 2-week agenda across all calendars (today → +13d) ──
+    // Date-keyed so the app can show real dates and swipe earlier/later; the old
+    // weekday-bucketed weekEvents is kept for back-compat with cached app builds.
     const now = new Date();
-    const in7 = new Date(Date.now() + 7 * 86400 * 1000);
+    const horizon = new Date(Date.now() + 14 * 86400 * 1000);
+    // All-day academic-calendar clutter Mike doesn't want on his agenda (UNCC etc.).
+    const NOISE = /\bno classes?\b|final exam|reading day|spring break|fall break|winter break|summer session|first day of|last day of|classes (begin|end|resume)|commencement|registration|add\/drop|midterm|semester|graduation ceremony|university (closed|holiday)/i;
+    const ymd = (p) => `${p.year}-${p.month}-${p.day}`;
     const cals = (await gFetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=10', at)).items || [];
     const weekEvents = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+    const dayMap = {}; // 'YYYY-MM-DD' -> { date, label, events: [{t,c}] }
     const calLines = [];
     for (const cal of cals.slice(0, 10)) {
       const ev = await gFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?` + new URLSearchParams({
-        timeMin: now.toISOString(), timeMax: in7.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '25',
+        timeMin: now.toISOString(), timeMax: horizon.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '60',
       }), at);
       for (const e of ev.items || []) {
         if (e.status === 'cancelled' || !e.summary) continue;
+        const allDay = !e.start?.dateTime;
+        if (allDay && NOISE.test(e.summary)) continue; // drop "No Classes", "Final Examinations", etc.
         const start = e.start?.dateTime || (e.start?.date ? e.start.date + 'T12:00:00' : null);
         if (!start) continue;
         const dt = new Date(start);
         const p = etParts(dt);
-        const idx = DAY_IDX[p.weekday];
-        if (idx === undefined) continue;
+        const key = ymd(p);
         const time = e.start?.dateTime ? `${p.hour}:${p.minute} ` : '';
-        // Firestore can't store arrays-in-arrays — store objects; the app converts to tuples.
-        if (weekEvents[idx].length < 5) weekEvents[idx].push({ t: (time + e.summary).slice(0, 28), c: colorFor(cal.summary || '', e.summary) });
+        const item = { t: (time + e.summary).slice(0, 30), c: colorFor(cal.summary || '', e.summary) };
+        // New date-keyed agenda.
+        if (!dayMap[key]) dayMap[key] = { date: key, label: `${p.weekday} ${+p.month}/${+p.day}`, events: [] };
+        if (dayMap[key].events.length < 6) dayMap[key].events.push(item);
+        // Legacy weekday buckets (best-effort; collides across weeks, hence the rewrite).
+        const idx = DAY_IDX[p.weekday];
+        if (idx !== undefined && weekEvents[idx].length < 5) weekEvents[idx].push(item);
         calLines.push(`${p.weekday} ${p.month}/${p.day}${e.start?.dateTime ? ' ' + p.hour + ':' + p.minute : ''} — ${e.summary} [${cal.summary || 'cal'}]`);
       }
     }
+    // Continuous window today → +13d (include empty days so the swipe feels like a calendar).
+    const todayKey = ymd(etParts(now));
+    const days = [];
+    for (let i = 0; i < 14; i++) {
+      const p = etParts(new Date(Date.now() + i * 86400 * 1000));
+      const key = ymd(p);
+      days.push(dayMap[key] || { date: key, label: `${p.weekday} ${+p.month}/${+p.day}`, events: [] });
+    }
+    void todayKey;
 
     // ── Gmail: recent inbox (wider window + snippets) → signals + brief text ──
     // Two passes: (1) the primary 3-day inbox minus social/forums/promotions, and
@@ -169,7 +190,7 @@ export default async function handler(req, res) {
         { id: 'a' + Date.now(), type: 'finance', title: `💰 Brokerage mail — ${tradeHits.length} item${tradeHits.length > 1 ? 's' : ''}`, text: tradeHits.join('\n'), at: at2, feedback: null, appUrl: 'https://www.mikesmoney.app' },
         ...(d0.alerts || []),
       ].slice(0, 120);
-      const tokens = Array.from(new Set([...(d0.fcmTokens || []), d0.fcmToken].filter(Boolean)));
+      const tokens = [d0.fcmToken || (d0.fcmTokens || []).slice(-1)[0]].filter(Boolean);
       for (const token of tokens) {
         try {
           await getMessaging().send({
@@ -184,7 +205,7 @@ export default async function handler(req, res) {
 
     await db.doc(`lifeos/${OWNER_UID}`).set({
       ...patchExtra,
-      calendar: { weekEvents, updatedAt: new Date().toISOString() },
+      calendar: { weekEvents, days, updatedAt: new Date().toISOString() },
       calendarText: calLines.slice(0, 25).join('\n') || 'No events in the next 7 days.',
       ...(emailSignals.length ? { emailSignals } : {}),
       emailText: (mailLines.slice(0, 30).join('\n') || 'No recent mail.')

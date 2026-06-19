@@ -52,7 +52,7 @@ export default async function handler(req, res) {
     }, { merge: true });
 
     let pushed = 0;
-    const tokens = inQuietHours(d.settings) ? [] : Array.from(new Set([...(d.fcmTokens || []), d.fcmToken].filter(Boolean)));
+    const tokens = inQuietHours(d.settings) ? [] : [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean);
     const link = `https://mikeslife.app/?source=push&alert=${alertId}`;
     for (const token of tokens) {
       try {

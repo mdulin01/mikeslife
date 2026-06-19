@@ -35,6 +35,9 @@ const initial = () => ({
   alertPrefs: { brief: true, podcast: true, recipe: true, mealprep: true, travel: true, fitness: true, finance: true, health: true, rental: true, celebrate: true, ainews: true },
   // Recently-completed item titles (last ~21d) — Rupert/the Today engine won't resurface these.
   doneLedger: [],     // [{ title, at }]
+  // Explicitly dismissed/deleted task titles — never resurface in Today or the check-in picker.
+  // Unlike doneLedger this has no expiry: a deleted task stays gone until Mike re-adds it.
+  dismissed: [],      // [{ title, at }]
   // App-wide settings (gear sheet). aiProvider switches Rupert's brain; briefHour is the
   // Eastern hour the morning push fires; quietStart/quietEnd mute pushes overnight (ET hours).
   settings: { aiProvider: 'openai', briefHour: 7, quietStart: 21, quietEnd: 7 },
@@ -336,6 +339,28 @@ export function useLifeData(user) {
     }), ['todayItems']);
   }, [mutate]);
 
+  // Delete/dismiss a task for good. Removes it from Today, completes any matching
+  // plan task (so the generator's open-task pool stops re-offering it), and records
+  // the title on the no-expiry `dismissed` ledger so neither Today nor the check-in
+  // picker ever resurfaces it. `item` = { title, planId?, id? }.
+  const dismissTask = useCallback((item) => {
+    const title = (item && item.title || '').trim();
+    if (!title) return;
+    mutate((p) => {
+      const todayItems = (p.todayItems || []).filter((t) => (item.id ? t.id !== item.id : t.title !== title));
+      const plans = (p.plans || []).map((pl) => (item.planId && pl.id !== item.planId) ? pl : {
+        ...pl,
+        stages: (pl.stages || []).map((st) => ({
+          ...st,
+          tasks: (st.tasks || []).map((tk) => tk.text === title ? { ...tk, done: true } : tk),
+        })),
+      });
+      const dismissed = [{ title, at: new Date().toISOString() },
+        ...((p.dismissed || []).filter((e) => e.title !== title))].slice(0, 200);
+      return { ...p, todayItems, plans, dismissed };
+    }, ['todayItems', 'plans', 'dismissed']);
+  }, [mutate]);
+
   // Submit the morning plan: ranked my-day items become todayItems; Rupert's
   // assignments live on dayPlan (run-tasks updates their statuses server-side).
   const submitDayPlan = useCallback((items, rupertTasks, date) => {
@@ -397,7 +422,7 @@ export function useLifeData(user) {
     addPerson, deletePerson, addPeople,
     setLocation, setFcmToken, setCommitments, setEmergency,
     setAlertFeedback, deleteAlert,
-    setTodayItems, markTodayDone, delayTodayItem, addTodayItem,
+    setTodayItems, markTodayDone, delayTodayItem, addTodayItem, dismissTask,
     setAlertPref, setAlertItemFeedback, setSetting,
     submitDayPlan,
   };
