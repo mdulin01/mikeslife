@@ -15,10 +15,14 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   try {
     if (!getApps().length) initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
-    const { idToken } = req.body || {};
+    const { idToken, url, title, body } = req.body || {};
     if (!idToken) return res.status(401).json({ error: 'missing idToken' });
     const decoded = await getAuth().verifyIdToken(idToken);
     if (decoded.uid !== OWNER_UID) return res.status(403).json({ error: 'not authorized' });
+
+    const ALLOWED = ['mikeslife.app', 'www.mikeslife.app', 'mikesmoney.app', 'www.mikesmoney.app', 'rainbowrentals.app', 'www.rainbowrentals.app'];
+    let link = LINK;
+    if (url) { try { if (ALLOWED.includes(new URL(url).hostname)) link = url; } catch (_) { /* keep default */ } }
 
     const d = (await getFirestore().doc(`lifeos/${OWNER_UID}`).get()).data() || {};
     const tokens = [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean);
@@ -31,9 +35,9 @@ export default async function handler(req, res) {
       try {
         await getMessaging().send({
           token,
-          notification: { title: '🦚 Rupert test ping', body: 'If you see this, notifications are working. ✓' },
-          data: { url: LINK },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
+          notification: { title: title || '🦚 Rupert test ping', body: body || 'If you see this, notifications are working. ✓' },
+          data: { url: link },
+          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
         });
         pushed++; results.push({ token: token.slice(0, 12) + '…', ok: true });
       } catch (e) {
