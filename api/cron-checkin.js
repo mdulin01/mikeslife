@@ -26,6 +26,11 @@ export default async function handler(req, res) {
     if (etHour() !== briefHour(d.settings)) return res.status(200).json({ ok: true, skipped: `not brief hour (want ${briefHour(d.settings)} ET)` });
     if (inQuietHours(d.settings)) return res.status(200).json({ ok: true, skipped: 'quiet hours' });
     if (d.dayPlan && d.dayPlan.date === easternYMD()) return res.status(200).json({ ok: true, skipped: 'plan already submitted' });
+    // Per-day idempotency: never send the check-in nudge twice in one Eastern day,
+    // even if the hourly cron is invoked more than once. (The OTHER duplicate source
+    // is the Mac mini's send-checkin-push job — unload its launchd plist.)
+    const today = easternYMD();
+    if (d.checkinPushedAt === today) return res.status(200).json({ ok: true, skipped: 'already pushed today' });
 
     const tokens = [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean);
     let pushed = 0;
@@ -40,6 +45,7 @@ export default async function handler(req, res) {
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }
+    if (pushed) await getFirestore().doc(`lifeos/${OWNER_UID}`).set({ checkinPushedAt: today }, { merge: true });
     return res.status(200).json({ ok: true, pushed });
   } catch (e) {
     console.error('cron-checkin error', e);

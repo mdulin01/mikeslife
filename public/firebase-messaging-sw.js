@@ -14,6 +14,19 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Adopt SW updates immediately so link-routing fixes ship on the next app open
+// (rather than waiting for every tab to close).
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+
+const ORIGIN = 'https://mikeslife.app';
+// Always hand FCM an absolute mikeslife URL — a bare path can resolve against the
+// wrong PWA on iOS, and WindowClient.navigate() rejects cross-origin.
+const absUrl = (u) => {
+  try { return new URL(u || '/?source=push', ORIGIN).href; }
+  catch { return ORIGIN + '/?source=push'; }
+};
+
 messaging.onBackgroundMessage((payload) => {
   const n = payload.notification || {};
   const data = payload.data || {};
@@ -21,18 +34,26 @@ messaging.onBackgroundMessage((payload) => {
     body: n.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    data: { url: data.url || '/?source=push' },
+    data: { url: absUrl(data.url) },
     vibrate: [180, 80, 180],
   });
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/';
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const c of list) { if ('focus' in c) { c.navigate(url); return c.focus(); } }
-      if (clients.openWindow) return clients.openWindow(url);
-    })
-  );
+  const url = absUrl(event.notification.data && event.notification.data.url);
+  event.waitUntil((async () => {
+    const list = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    // CRITICAL: only consider OUR windows. On iOS, matchAll can return another
+    // installed PWA's window (e.g. mikesmoney). Focusing it sent the tap to the
+    // wrong app, and navigate() rejected cross-origin — so the user landed on
+    // whatever that app last showed. Filter to the mikeslife origin first.
+    const ours = list.filter((c) => { try { return new URL(c.url).origin === ORIGIN; } catch { return false; } });
+    if (ours.length) {
+      const c = ours[0];
+      try { await c.navigate(url); } catch { /* same-origin nav can still throw on some iOS builds */ }
+      return c.focus();
+    }
+    if (clients.openWindow) return clients.openWindow(url);
+  })());
 });
