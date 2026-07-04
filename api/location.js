@@ -21,8 +21,8 @@ export default async function handler(req, res) {
       return res.status(503).json({ error: 'not-configured', message: 'Add FIREBASE_SERVICE_ACCOUNT + LOCATION_TOKEN in Vercel.' });
     }
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const token = body.token || req.headers['x-location-token'];
-    if (token !== process.env.LOCATION_TOKEN) return res.status(403).json({ error: 'bad token' });
+    const token = String(body.token || req.headers['x-location-token'] || '').trim();
+    if (!token || token !== String(process.env.LOCATION_TOKEN).trim()) return res.status(403).json({ error: 'bad token' });
 
     const place = String(body.place || '').slice(0, 40) || 'unknown';
     const location = { place, at: new Date().toISOString(), source: 'shortcut' };
