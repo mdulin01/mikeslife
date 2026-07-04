@@ -22,13 +22,7 @@ export default async function handler(req, res) {
     }
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const token = String(body.token || req.headers['x-location-token'] || '').trim();
-    const exp = String(process.env.LOCATION_TOKEN).trim();
-    if (!token || token !== exp) {
-      // TEMP diagnostics (remove after setup): lengths + sha prefixes only, never values
-      const { createHash } = await import('node:crypto');
-      const h = (x) => createHash('sha256').update(x).digest('hex').slice(0, 8);
-      return res.status(403).json({ error: 'bad token', expLen: exp.length, gotLen: token.length, expSha8: h(exp), gotSha8: h(token) });
-    }
+    if (!token || token !== String(process.env.LOCATION_TOKEN).trim()) return res.status(403).json({ error: 'bad token' });
 
     const place = String(body.place || '').slice(0, 40) || 'unknown';
     const location = { place, at: new Date().toISOString(), source: 'shortcut' };
