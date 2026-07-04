@@ -769,7 +769,9 @@ function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, 
   const doneItems = all.filter((t) => t.status === 'done');
   const openCount = items.length;
   const briefSub = brief ? firstContentLine(brief).slice(0, 90) : '';
-  const latest = alerts[0];
+  // Preview the newest NON-brief alert when the brief already has its own card above —
+  // otherwise Home showed the same brief twice back-to-back.
+  const latest = (brief ? alerts.find((a) => a.type !== 'brief') : null) || alerts[0];
 
   return (
     <section>
