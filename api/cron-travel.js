@@ -17,6 +17,7 @@
 // Without FIREBASE_SA_TRAVEL the job no-ops politely.
 
 import OpenAI from 'openai';
+import { createHash } from 'node:crypto';
 import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
@@ -24,6 +25,8 @@ import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const OWNER_EMAIL = 'mdulin@gmail.com';
+const ADAM_EMAIL = 'adamjosephbritten@gmail.com';
+const MAA_APP = 'https://mikeandadam.app';
 const MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
 const TRAVEL_APP = 'https://www.mikestravel.app';
 
@@ -131,7 +134,8 @@ export default async function handler(req, res) {
 
     const list = await gFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?' + new URLSearchParams({ q: GMAIL_Q, maxResults: '15' }), at);
     const fresh = (list.messages || []).filter((m) => !seen.has(m.id));
-    if (!fresh.length) return res.status(200).json({ ok: true, checked: (list.messages || []).length, new: 0 });
+    // NOTE: no early return here — pre-trip alerts + the mikeandadam mirror
+    // below must run every cycle even when there's no new mail.
 
     // ── Trips this account can file into ──
     const tripsSnap = await tDb.collection('trips').where('members', 'array-contains', OWNER_EMAIL).get();
@@ -177,24 +181,118 @@ export default async function handler(req, res) {
       return `${t.name} (${t.start}→${t.end || t.start}, ${t.destination || 'TBD'}): ` + (segs.map((s) => `${s.date} ${s.title}${s.time ? ' @' + s.time : ''}`).join('; ') || 'no segments yet');
     }).join('\n');
 
-    // ── Persist dedupe list + alert, push if anything was filed ──
+    // ── Pre-trip alert: ≤2 days out — check-in nudge + day-1 agenda (once per trip) ──
+    const preSeen = new Set(life.travelPreTripSeen || []);
+    let preTrip = null;
+    for (const t of upcoming) {
+      const key = t.id + ':' + t.start;
+      if (!t.start || t.start < today || preSeen.has(key)) continue;
+      const days = Math.round((new Date(t.start + 'T12:00:00Z') - new Date(today + 'T12:00:00Z')) / 86400000);
+      if (days > 2) continue;
+      const day1 = (t.segments || []).filter((s) => s.date === t.start).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+      preTrip = {
+        key,
+        title: `🧳 ${t.name} — ${days === 0 ? 'today' : days === 1 ? 'tomorrow' : 'in 2 days'}!`,
+        text: [
+          day1.length ? 'Day 1: ' + day1.map((s) => (s.time ? s.time + ' ' : '') + s.title).join(' → ') : 'No day-1 segments yet — check the plan.',
+          (t.segments || []).some((s) => s.type === 'flight') ? 'Flight check-in opens 24h out. Pack tonight.' : 'Confirm reservations + pack.',
+        ].join('\n'),
+      };
+      preSeen.add(key);
+      break; // at most one pre-trip push per run
+    }
+
+    // ── Mirror Adam-shared trips → mikeandadam tripData/shared (+ notify Adam) ──
+    // Reuses FIREBASE_SA_FITNESS: mikesfitness and mikeandadam share project
+    // trip-planner-5cc84. One-way mirror — mikestravel stays canonical; mirrored
+    // trips carry source:'mikestravel' and native mikeandadam trips are untouched.
+    let maaSync = 'skipped (no FIREBASE_SA_FITNESS)', adamPush = 'none';
+    const sharedTrips = trips.filter((t) => (t.members || []).includes(ADAM_EMAIL) && (t.end || t.start) >= today);
+    if (process.env.FIREBASE_SA_FITNESS) {
+      try {
+        let maaApp; try { maaApp = getApp('maa'); } catch { maaApp = initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SA_FITNESS)) }, 'maa'); }
+        const maaDb = getFirestore(maaApp);
+        const sharedRef = maaDb.doc('tripData/shared');
+        const cur = (await sharedRef.get()).data() || {};
+
+        const mirrors = sharedTrips.map((t) => ({
+          id: 'mt-' + t.id, source: 'mikestravel',
+          destination: t.destination || t.name, emoji: t.emoji || '✈️',
+          dates: { start: t.start, end: t.end || t.start },
+          color: 'from-cyan-400 to-sky-500', accent: 'bg-cyan-400',
+          isWishlist: false, guests: [], special: '', coverImage: '',
+          transportMode: (t.segments || []).some((s) => s.type === 'flight') ? 'air' : 'ground',
+          notes: (t.notes ? t.notes + ' · ' : '') + '🔄 Synced from mikestravel.app — edit there',
+        }));
+        const details = { ...(cur.tripDetails || {}) };
+        for (const k of Object.keys(details)) if (k.startsWith('mt-') && !mirrors.some((m) => m.id === k)) delete details[k];
+        for (const t of sharedTrips) {
+          const segs = t.segments || [];
+          const prev = details['mt-' + t.id] || {};
+          details['mt-' + t.id] = {
+            flights: segs.filter((s) => s.type === 'flight').map((s, i) => ({ id: 'ms' + i, addedBy: 'Mike', airline: '', flightNo: s.title, date: s.date, depart: s.time || '', arrive: '', confirmation: s.conf || '' })),
+            hotels: segs.filter((s) => s.type === 'hotel').map((s, i) => ({ id: 'mh' + i, addedBy: 'Mike', name: s.title, address: s.location || '', checkIn: s.date, checkOut: '' })),
+            events: segs.filter((s) => ['activity', 'food', 'note'].includes(s.type)).map((s, i) => ({ id: 'me' + i, addedBy: 'Mike', name: s.title + (s.notes ? ' — ' + s.notes : ''), date: s.date, time: s.time || '', location: s.location || '' })),
+            links: prev.links || [], packingList: prev.packingList || [], budget: prev.budget || { total: 0, expenses: [] }, photos: prev.photos || [], notes: prev.notes || [],
+          };
+        }
+        const mirrorHash = createHash('sha256').update(JSON.stringify({ m: mirrors, d: Object.fromEntries(Object.entries(details).filter(([k]) => k.startsWith('mt-'))) })).digest('hex');
+        if (mirrorHash !== life.maaTravelMirrorHash) {
+          const native = (cur.trips || []).filter((t) => t.source !== 'mikestravel');
+          await sharedRef.set({ trips: [...native, ...mirrors], tripDetails: details, lastUpdated: new Date().toISOString(), updatedBy: 'Rupert' }, { merge: true });
+          maaSync = 'updated (' + mirrors.length + ' mirrored)';
+        } else maaSync = 'unchanged';
+
+        // Notify Adam only when NEW segments were filed into a shared trip this run.
+        const adamWorthy = Object.entries(added).filter(([id]) => sharedTrips.some((t) => t.id === id));
+        if (adamWorthy.length) {
+          const toks = (await maaDb.doc('tripData/fcmTokens').get()).data() || {};
+          if (toks.adam) {
+            try {
+              await getMessaging(maaApp).send({
+                token: toks.adam,
+                notification: { title: '✈️ Trip updated — ' + adamWorthy.map(([, v]) => v.name).join(', '), body: adamWorthy.map(([, v]) => v.titles.join(' · ')).join('\n').slice(0, 180) },
+                data: { url: MAA_APP },
+                webpush: { notification: { icon: MAA_APP + '/icon-192.png', badge: MAA_APP + '/icon-192.png' } },
+              });
+              adamPush = 'sent';
+            } catch (e) { adamPush = 'failed: ' + e.message; console.error('adam push failed:', e.message); } // likely IAM: SA needs FCM send permission
+          } else adamPush = 'no adam token registered';
+        }
+        if (mirrorHash !== life.maaTravelMirrorHash) life.maaTravelMirrorHash = mirrorHash; // carried into patch below
+      } catch (e) { maaSync = 'failed: ' + e.message; console.error('maa mirror failed:', e.message); }
+    }
+
+    // ── Persist dedupe lists + alerts, push if anything happened ──
     const tripNames = Object.values(added);
     const total = tripNames.reduce((n, t) => n + t.titles.length, 0);
-    const patch = { travelSeen: [...seen].slice(-300), travelContext, travelContextAt: new Date().toISOString() };
+    const patch = {
+      travelSeen: [...seen].slice(-300), travelContext, travelContextAt: new Date().toISOString(),
+      travelPreTripSeen: [...preSeen].slice(-60), maaTravelMirrorHash: life.maaTravelMirrorHash || '',
+    };
+    const newAlerts = [];
+    const muted = life.alertPrefs && life.alertPrefs.travel === false;
     if (total || unmatched.length) {
       const title = total ? `✈️ ${total} segment${total > 1 ? 's' : ''} filed → ${tripNames.map((t) => t.name).join(', ')}` : '✈️ Travel email needs a trip';
       const text = [
         ...tripNames.map((t) => `${t.name}: ${t.titles.join(' · ')}`),
         ...(unmatched.length ? ['No matching trip (add one, then re-run): ' + unmatched.join(' · ')] : []),
       ].join('\n');
-      patch.alerts = [{ id: 'a' + Date.now(), type: 'travel', title, text, at: new Date().toISOString(), feedback: null, appUrl: TRAVEL_APP }, ...(life.alerts || [])].slice(0, 120);
-      if (life.fcmToken && (!life.alertPrefs || life.alertPrefs.travel !== false)) {
+      newAlerts.push({ id: 'a' + Date.now(), type: 'travel', title, text, at: new Date().toISOString(), feedback: null, appUrl: TRAVEL_APP });
+      if (life.fcmToken && !muted) {
         try { await getMessaging().send(dataPush(life.fcmToken, title, text.slice(0, 160), TRAVEL_APP)); } catch (e) { console.error('push failed:', e.message); }
       }
     }
+    if (preTrip) {
+      newAlerts.push({ id: 'a' + Date.now() + 'p', type: 'travel', title: preTrip.title, text: preTrip.text, at: new Date().toISOString(), feedback: null, appUrl: TRAVEL_APP });
+      if (life.fcmToken && !muted) {
+        try { await getMessaging().send(dataPush(life.fcmToken, preTrip.title, preTrip.text.slice(0, 160), TRAVEL_APP)); } catch (e) { console.error('pre-trip push failed:', e.message); }
+      }
+    }
+    if (newAlerts.length) patch.alerts = [...newAlerts, ...(life.alerts || [])].slice(0, 120);
     await lifeRef.set(patch, { merge: true });
 
-    return res.status(200).json({ ok: true, checked: (list.messages || []).length, new: fresh.length, filed: total, unmatched });
+    return res.status(200).json({ ok: true, checked: (list.messages || []).length, new: fresh.length, filed: total, unmatched, preTrip: preTrip?.title || null, maaSync, adamPush });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: e.message });
