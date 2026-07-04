@@ -7,6 +7,7 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { briefHour, etHour, inQuietHours } from './_prefs.js';
+import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const LINK = 'https://mikeslife.app/?source=push&focus=checkin';
@@ -36,12 +37,7 @@ export default async function handler(req, res) {
     let pushed = 0;
     for (const token of tokens) {
       try {
-        await getMessaging().send({
-          token,
-          notification: { title: '🦚 Plan your day with Rupert', body: 'Pick today\'s focus + give Rupert his assignments — 60 seconds.' },
-          data: { url: LINK },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
-        });
+        await getMessaging().send(dataPush(token, '🦚 Plan your day with Rupert', 'Pick today\'s focus + give Rupert his assignments — 60 seconds.', LINK));
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }

@@ -9,6 +9,7 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const TIMESHEET = 'https://www.mikesmoney.app/business';
@@ -60,12 +61,7 @@ export default async function handler(req, res) {
     let pushed = 0;
     for (const token of tokens) {
       try {
-        await getMessaging().send({
-          token,
-          notification: { title: '🧾 Log your hours', body: (today <= '2026-06-30' ? 'Avance + Triad this week' : 'Avance this week') + (firstFriday ? ' · GMA payment check' : '') },
-          data: { url: TIMESHEET },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: TIMESHEET } },
-        });
+        await getMessaging().send(dataPush(token, '🧾 Log your hours', (today <= '2026-06-30' ? 'Avance + Triad this week' : 'Avance this week') + (firstFriday ? ' · GMA payment check' : ''), TIMESHEET));
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }

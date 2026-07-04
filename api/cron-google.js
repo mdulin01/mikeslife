@@ -7,7 +7,6 @@
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { getMessaging } from 'firebase-admin/messaging';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const EASTERN = 'America/New_York';
@@ -190,17 +189,9 @@ export default async function handler(req, res) {
         { id: 'a' + Date.now(), type: 'finance', title: `💰 Brokerage mail — ${tradeHits.length} item${tradeHits.length > 1 ? 's' : ''}`, text: tradeHits.join('\n'), at: at2, feedback: null, appUrl: 'https://www.mikesmoney.app' },
         ...(d0.alerts || []),
       ].slice(0, 120);
-      const tokens = [d0.fcmToken || (d0.fcmTokens || []).slice(-1)[0]].filter(Boolean);
-      for (const token of tokens) {
-        try {
-          await getMessaging().send({
-            token,
-            notification: { title: '💰 Brokerage mail', body: tradeHits[0].slice(0, 180) },
-            data: { url: 'https://mikeslife.app/?source=push&focus=content' },
-            webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: 'https://mikeslife.app/?source=push&focus=content' } },
-          });
-        } catch (e) { console.error('push failed:', e.message); }
-      }
+      // No push here (by design, 2026-07-04): cron-finance is the single finance push
+      // channel — this alert still lands in the app's alert history + the brief's FYI,
+      // so the same brokerage event no longer pings the phone twice.
     }
 
     await db.doc(`lifeos/${OWNER_UID}`).set({

@@ -8,6 +8,7 @@
 import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const LINK = 'https://rainbowrentals.app/?source=push';
@@ -50,12 +51,7 @@ export default async function handler(req, res) {
     let pushed = 0; const stale = [];
     for (const token of tokens) {
       try {
-        await getMessaging().send({
-          token,
-          notification: { title: '✅ Liam finished the rental updates', body },
-          data: { url: LINK },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: LINK } },
-        });
+        await getMessaging().send(dataPush(token, '✅ Liam finished the rental updates', body, LINK));
         pushed++;
       } catch (e) {
         if (/registration-token-not-registered|invalid-argument|invalid-registration/.test(e.code || e.message || '')) stale.push(token);

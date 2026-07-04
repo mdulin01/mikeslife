@@ -9,6 +9,7 @@
 import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { dataPush } from './_push.js';
 
 const LIAM_EMAIL = 'dulinliam@gmail.com';
 const MIKE_EMAIL = 'mdulin@gmail.com';
@@ -71,18 +72,14 @@ export default async function handler(req, res) {
       try {
         if (getApps().some((a) => a.name === '[DEFAULT]')) {
           const ml = (await getFirestore().doc(`lifeos/${OWNER_UID}`).get()).data() || {};
-          mikeTokens = [...new Set([ml.fcmToken, ...(ml.fcmTokens || [])].filter(Boolean))];
+          mikeTokens = [ml.fcmToken || (ml.fcmTokens || []).slice(-1)[0]].filter(Boolean);
         }
       } catch (e) { out.mikeTokenErr = e.message; }
       if (!mikeTokens.length && byEmail[MIKE_EMAIL]) mikeTokens = [byEmail[MIKE_EMAIL]];
       let pushedMike = 0;
       for (const token of mikeTokens) {
         try {
-          await msg.send({
-            token,
-            notification: { title: '✅ Liam finished the rental updates', body: 'This week’s rents/leases/expenses are recorded — remember to pay Liam.' },
-            webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: 'https://rainbowrentals.app/?source=push' } },
-          });
+          await msg.send(dataPush(token, '✅ Liam finished the rental updates', 'This week’s rents/leases/expenses are recorded — remember to pay Liam.', 'https://rainbowrentals.app/?source=push'));
           pushedMike++;
         } catch (e) { out.mikeErr = e.message; }
       }

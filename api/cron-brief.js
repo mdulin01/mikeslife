@@ -13,6 +13,7 @@ import { briefHour, etHour, inQuietHours } from './_prefs.js';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const LINK = 'https://mikeslife.app/?source=push&focus=brief';
@@ -202,12 +203,7 @@ ACCURACY (critical): state only facts that appear in the context. Never invent, 
     let pushed = 0;
     for (const token of tokens) {
       try {
-        await getMessaging().send({
-          token,
-          notification: { title: '☀️ ' + firstLine, body: 'Your brief is ready — tap to open.' },
-          data: { url: link },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
-        });
+        await getMessaging().send(dataPush(token, '☀️ ' + firstLine, 'Your brief is ready — tap to open.', link));
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }

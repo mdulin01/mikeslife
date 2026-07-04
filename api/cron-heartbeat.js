@@ -9,6 +9,7 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { inQuietHours } from './_prefs.js';
+import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const STALE_H = Number(process.env.HEARTBEAT_STALE_HOURS || 26);
@@ -56,12 +57,7 @@ export default async function handler(req, res) {
     const link = `https://mikeslife.app/?source=push&alert=${alertId}`;
     for (const token of tokens) {
       try {
-        await getMessaging().send({
-          token,
-          notification: { title: '⚠️ Mike\'s Life — a sync is stale', body: stale[0] },
-          data: { url: link },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
-        });
+        await getMessaging().send(dataPush(token, '⚠️ Mike\'s Life — a sync is stale', stale[0], link));
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }

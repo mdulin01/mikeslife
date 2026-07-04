@@ -1,5 +1,9 @@
 /* Firebase Cloud Messaging service worker — handles background push + notification taps.
-   Service workers can't read import.meta.env, so the (public) web config is inline. */
+   Service workers can't read import.meta.env, so the (public) web config is inline.
+
+   Pushes are DATA-ONLY (see api/_push.js): the server never sends a `notification`
+   payload, so the FCM SDK doesn't auto-display anything and this worker is the
+   single display path — that's what fixed the double notifications. */
 importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
 
@@ -14,45 +18,37 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Adopt SW updates immediately so link-routing fixes ship on the next app open
-// (rather than waiting for every tab to close).
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-
-const ORIGIN = 'https://mikeslife.app';
-// Always hand FCM an absolute mikeslife URL — a bare path can resolve against the
-// wrong PWA on iOS, and WindowClient.navigate() rejects cross-origin.
-const absUrl = (u) => {
-  try { return new URL(u || '/?source=push', ORIGIN).href; }
-  catch { return ORIGIN + '/?source=push'; }
-};
-
 messaging.onBackgroundMessage((payload) => {
-  const n = payload.notification || {};
   const data = payload.data || {};
-  self.registration.showNotification(n.title || 'Mike’s Life', {
-    body: n.body || '',
+  const n = payload.notification || {}; // legacy fallback while old sends drain
+  self.registration.showNotification(data.title || n.title || 'Mike’s Life', {
+    body: data.body || n.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    data: { url: absUrl(data.url) },
+    data: { url: data.url || '/?source=push' },
     vibrate: [180, 80, 180],
   });
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = absUrl(event.notification.data && event.notification.data.url);
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  // Cross-origin (spoke apps: mikesmoney/mikesfitness/rainbowrentals…) must use
+  // openWindow — client.navigate() rejects cross-origin URLs, which used to
+  // silently re-focus mikeslife instead of opening the spoke app.
+  let external = false;
+  try { external = /^https?:/i.test(url) && new URL(url).origin !== self.location.origin; } catch (e) { /* relative */ }
   event.waitUntil((async () => {
+    if (external) {
+      if (clients.openWindow) return clients.openWindow(url);
+      return;
+    }
     const list = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-    // CRITICAL: only consider OUR windows. On iOS, matchAll can return another
-    // installed PWA's window (e.g. mikesmoney). Focusing it sent the tap to the
-    // wrong app, and navigate() rejected cross-origin — so the user landed on
-    // whatever that app last showed. Filter to the mikeslife origin first.
-    const ours = list.filter((c) => { try { return new URL(c.url).origin === ORIGIN; } catch { return false; } });
-    if (ours.length) {
-      const c = ours[0];
-      try { await c.navigate(url); } catch { /* same-origin nav can still throw on some iOS builds */ }
-      return c.focus();
+    for (const c of list) {
+      if ('focus' in c) {
+        try { await c.navigate(url); } catch (e) { /* ignore */ }
+        return c.focus();
+      }
     }
     if (clients.openWindow) return clients.openWindow(url);
   })());

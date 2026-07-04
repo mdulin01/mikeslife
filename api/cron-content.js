@@ -12,6 +12,7 @@ import OpenAI from 'openai';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
@@ -178,12 +179,7 @@ export default async function handler(req, res) {
     if (shouldPush) {
       for (const token of tokens) {
         try {
-          await getMessaging().send({
-            token,
-            notification: { title: TITLES[slot], body: items.map((it) => it.t).join(' · ').slice(0, 180) },
-            data: { url: link },
-            webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
-          });
+          await getMessaging().send(dataPush(token, TITLES[slot], items.map((it) => it.t).join(' · ').slice(0, 180), link));
           pushed++;
         } catch (e) { console.error('push failed:', e.message); }
       }

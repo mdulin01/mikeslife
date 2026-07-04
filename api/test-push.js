@@ -7,6 +7,7 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const LINK = 'https://mikeslife.app/?source=push';
@@ -33,12 +34,7 @@ export default async function handler(req, res) {
     const stale = [];
     for (const token of tokens) {
       try {
-        await getMessaging().send({
-          token,
-          notification: { title: title || '🦚 Rupert test ping', body: body || 'If you see this, notifications are working. ✓' },
-          data: { url: link },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link } },
-        });
+        await getMessaging().send(dataPush(token, title || '🦚 Rupert test ping', body || 'If you see this, notifications are working. ✓', link));
         pushed++; results.push({ token: token.slice(0, 12) + '…', ok: true });
       } catch (e) {
         results.push({ token: token.slice(0, 12) + '…', ok: false, error: e.code || e.message });

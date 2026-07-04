@@ -11,6 +11,7 @@
 import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { dataPush } from './_push.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const THRESHOLD = Number(process.env.LARGE_TXN_THRESHOLD || 500);
@@ -120,12 +121,7 @@ export default async function handler(req, res) {
     let pushed = 0;
     for (const token of tokens) {
       try {
-        await getMessaging().send({
-          token,
-          notification: { title: '💰 Money watch', body: lines[0].slice(0, 180) },
-          data: { url: MONEY_APP },
-          webpush: { notification: { icon: 'https://mikeslife.app/icon-192.png', badge: 'https://mikeslife.app/icon-192.png' }, fcmOptions: { link: MONEY_APP } },
-        });
+        await getMessaging().send(dataPush(token, '💰 Money watch', lines[0].slice(0, 180), MONEY_APP));
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }
