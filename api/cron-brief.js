@@ -199,12 +199,16 @@ ACCURACY (critical): state only facts that appear in the context. Never invent, 
       }
     } catch (e) { console.error('backup failed:', e.message); }
 
-    const firstLine = brief.split('\n')[0] || 'Your morning brief';
+    // Push preview = the first real content line (skip greeting + bare section headers),
+    // so the lock-screen notification says something useful, Gemini-style.
+    const firstContent = (brief.split('\n').map((l) => l.trim())
+      .filter((l) => l && !/^good morning/i.test(l) && !/^[^-•🥇🥈🥉].{0,28}:$/.test(l))[0] || 'Your brief is ready — tap to open.')
+      .replace(/^[-•]\s*/, '').slice(0, 170);
     const tokens = inQuietHours(d.settings) ? [] : [d.fcmToken || (d.fcmTokens || []).slice(-1)[0]].filter(Boolean);
     let pushed = 0;
     for (const token of tokens) {
       try {
-        await getMessaging().send(dataPush(token, '☀️ ' + firstLine, 'Your brief is ready — tap to open.', link));
+        await getMessaging().send(dataPush(token, (isSunday ? '🗓️ Weekly review' : '☀️ Morning brief') + ' — ' + today, firstContent, link));
         pushed++;
       } catch (e) { console.error('push failed:', e.message); }
     }

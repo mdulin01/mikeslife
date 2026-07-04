@@ -114,9 +114,15 @@ function alertItems(a) {
   });
 }
 
+// First real CONTENT line of a Rupert text: skips greetings, bare section headers
+// ("Top of mind:", "FYI:"), and URLs — so collapsed cards preview substance, not scaffolding.
+const firstContentLine = (text) => {
+  const line = String(text || '').split('\n').map((s) => s.trim())
+    .filter((s) => s && !/^https?:\/\//.test(s) && !/^Listen:/i.test(s) && !/^good morning/i.test(s) && !/^[^-•🥇🥈🥉].{0,28}:$/.test(s))[0] || '';
+  return line.replace(/^[-•]\s*/, '');
+};
 const alertSnippet = (a) => {
-  const line = String(a.text || '').split('\n').map((s) => s.trim()).filter((s) => s && !/^https?:\/\//.test(s) && !/^Listen:/i.test(s))
-    .slice(a.type === 'brief' ? 1 : 0)[0] || '';
+  const line = firstContentLine(a.text);
   return line.length > 90 ? line.slice(0, 90) + '…' : line;
 };
 const isRecent = (a) => a.at && (Date.now() - new Date(a.at).getTime()) < RECENT_DAYS * 86400 * 1000;
@@ -762,7 +768,7 @@ function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, 
   const items = all.filter((t) => t.status === 'pending');
   const doneItems = all.filter((t) => t.status === 'done');
   const openCount = items.length;
-  const briefSub = brief ? (brief.split('\n').map((l) => l.trim()).filter((l) => l && !/^good morning/i.test(l))[0] || '').slice(0, 90) : '';
+  const briefSub = brief ? firstContentLine(brief).slice(0, 90) : '';
   const latest = alerts[0];
 
   return (
@@ -1559,7 +1565,10 @@ export default function App() {
 
       {FIREBASE_READY && (
         <div className="refreshbar">
-          <span className="upd">{data.refreshedAt ? `Updated ${relTime(data.refreshedAt)}` : 'Pull down or tap Refresh to update'}</span>
+          <span className="upd">{(() => {
+            const stamps = [data.refreshedAt, data.googleSyncedAt, data.fitnessUpdatedAt, data.financeUpdatedAt, data.healthUpdatedAt, (data.alerts || [])[0]?.at].filter(Boolean).map((t) => new Date(t).getTime()).filter((n) => !isNaN(n));
+            return stamps.length ? `Updated ${relTime(new Date(Math.max(...stamps)).toISOString())}` : 'Pull down or tap Refresh to update';
+          })()}</span>
           <button className="btn def refbtn" onClick={() => setSearchOpen(true)} title="Search everything" style={{ marginRight: 6 }}>🔎</button>
           <button className="btn def refbtn" onClick={doRefresh} disabled={refreshing} title="Have Rupert pull fresh content + ideas">
             <RefreshCw size={14} className={refreshing ? 'spin' : ''} /> {refreshing ? 'Refreshing…' : 'Refresh'}
