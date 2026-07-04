@@ -153,6 +153,9 @@ export default async function handler(req, res) {
         snippet: clean(msg.snippet || '').slice(0, 160),
         date: shortDate(h.Date),
         fromRaw: h.From || '',
+        // Gmail permalink — lets the brief attach a tappable "view message" link
+        // to Top-of-mind/FYI items (Gemini-brief parity).
+        link: `https://mail.google.com/mail/u/0/#all/${msg.id}`,
       };
     };
 
@@ -165,7 +168,7 @@ export default async function handler(req, res) {
       const e = parse(msg);
       const [tag, accent, hint, act] = tagFor(e.fromRaw, e.subject);
       if (tag !== '📬 INBOX' && emailSignals.length < 12) emailSignals.push({ tag, accent, from: e.from, subject: e.subject, hint, act });
-      mailLines.push(`[${e.date}] ${e.from} — ${e.subject}${e.snippet ? ' — ' + e.snippet : ''}`);
+      mailLines.push(`[${e.date}] ${e.from} — ${e.subject}${e.snippet ? ' — ' + e.snippet : ''} | ${e.link}`);
       if (!mailSeen.has(primaryIds[i]) && FIN_SENDER_RE.test(e.fromRaw) && TRADE_RE.test(e.subject)) {
         tradeHits.push(`${e.from}: ${e.subject}`);
         mailSeen.add(primaryIds[i]);
@@ -176,7 +179,7 @@ export default async function handler(req, res) {
     for (const msg of shipMsgs) {
       if (!msg) continue;
       const e = parse(msg);
-      deliveryLines.push(`[${e.date}] ${e.from} — ${e.subject}${e.snippet ? ' — ' + e.snippet : ''}`);
+      deliveryLines.push(`[${e.date}] ${e.from} — ${e.subject}${e.snippet ? ' — ' + e.snippet : ''} | ${e.link}`);
       if (emailSignals.length < 12) { const [tag, accent, hint, act] = tagFor(e.fromRaw, e.subject); emailSignals.push({ tag: '📦 DELIVERY', accent: '--sky', from: e.from, subject: e.subject, hint: 'Delivery → ', act: 'track' }); }
     }
 

@@ -154,7 +154,7 @@ Health & Training:
 - <ONLY abnormal/⚠-flagged labs or preventive care that is due/overdue, each with its date — NEVER a normal/'ok' result>
 - <one concrete training line grounded in recent workouts + current plan; suggest recovery if he trained hard the last day or two>
 FYI:
-- <low-priority but useful heads-ups: confirmed reservations, birthdays, offers, renewals/notices from Calendar/email>
+- <low-priority but useful heads-ups: confirmed reservations, statements/receipts, deposits and payment confirmations, security/expiration notices (tokens, cards, domains), birthdays, renewals — grouped tightly, each with its date>
 Delivery updates:
 - <packages in transit pulled from shipping/tracking emails — what + carrier + ETA. OMIT this whole section if the context has no shipping email.>
 Looking ahead:
@@ -165,6 +165,7 @@ Looking ahead:
 <(up to 3 themes; each = bigger threads tied to his plans/pillars — autumn locum work, travel/upgrades, triathlon prep, the apps, finances, etc. — that aren't urgent today)>
 Rules:
 - "Top of mind" is the most important section: actively scan Calendar + Recent email + Finances for anything time-sensitive and act-on-able and lead with it, each dated. Skip the section only if truly nothing is pending.
+- LINKS: email lines in the context end with " | https://mail.google.com/…". When a Top of mind / FYI / Delivery item comes from such a line, end that item with the bare URL (a space before it, NO punctuation after it) so it renders as a tappable "view message" link. Never invent a link.
 - Today's focus: EXACTLY 3 items drawn from active plans + today's list, each on its own 🥇/🥈/🥉 line. ANTI-REPEAT (critical): do NOT just re-list focus items shown in recent briefs — vary them; if an item has recurred for days with no progress, retire it or convert it to one gentle "still open, or already handled?" nudge. NEVER list anything in 'Recently completed'.
 - Health & Training: never surface normal/'ok' labs. Always include one training line whenever any training data exists.
 - "Looking ahead" themes must NOT duplicate Top-of-mind items — these are the slower-burning threads, each with a crisp rationale and 1-2 "→" next steps.
