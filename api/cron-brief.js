@@ -102,6 +102,7 @@ export default async function handler(req, res) {
     if (d.financeContext) ctx.push('Finances:\n' + d.financeContext);
     if (d.healthContext) ctx.push('Health:\n' + d.healthContext);
     if (d.travelContext) ctx.push('Travel (upcoming trips from mikestravel):\n' + d.travelContext);
+    if (d.coupleContext) ctx.push('Couple life with Adam (from mikeandadam — joint tasks, shared training, memories):\n' + d.coupleContext);
     if (d.location && (d.location.place || d.location.lat)) ctx.push(`Location: ${d.location.place || `${d.location.lat}, ${d.location.lng}`}`);
     if (d.calendarText) ctx.push('Calendar (week ahead):\n' + d.calendarText);
     if (d.emailText) ctx.push('Recent email headers:\n' + d.emailText);

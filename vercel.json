@@ -87,6 +87,10 @@
     {
       "path": "/api/cron-travel",
       "schedule": "56 10,22 * * *"
+    },
+    {
+      "path": "/api/cron-couple-context",
+      "schedule": "51 10 * * *"
     }
   ]
 }

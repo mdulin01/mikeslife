@@ -68,6 +68,7 @@ function buildContext(d) {
   if (d.financeContext) lines.push('Finances (from mikes-money, curated by Rupert):\n' + d.financeContext);
   if (d.healthContext) lines.push('Health (from mikeshealth):\n' + d.healthContext);
   if (d.travelContext) lines.push('Travel (upcoming trips from mikestravel):\n' + d.travelContext);
+  if (d.coupleContext) lines.push('Couple life with Adam (from mikeandadam — joint tasks, shared training, memories):\n' + d.coupleContext);
   if (d.location && (d.location.place || d.location.lat)) {
     const ago = d.location.at ? ` (as of ${d.location.at})` : '';
     lines.push(`Current location: ${d.location.place || `${d.location.lat}, ${d.location.lng}`}${ago}. Use it for timely, context-aware suggestions when relevant.`);
