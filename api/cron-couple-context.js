@@ -112,6 +112,70 @@ export default async function handler(req, res) {
       if (days >= 10) bannerBits.push(`${days}d since your last memory 📸`);
     }
 
+    // ── Shared Google calendar → tripData/calendar in mikeandadam ──
+    // Uses the same OAuth as cron-google (secrets/google refresh token).
+    // Prefers calendars whose name mentions both Mike and Adam (the shared
+    // couple calendar); falls back to ALL calendars if none match.
+    let calendarStatus = 'skipped';
+    try {
+      const sec = (await lifeDb.doc('secrets/google').get()).data();
+      if (sec?.refreshToken && process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+        const tr = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            refresh_token: sec.refreshToken,
+            client_id: process.env.GOOGLE_CLIENT_ID,
+            client_secret: process.env.GOOGLE_CLIENT_SECRET,
+            grant_type: 'refresh_token',
+          }),
+        }).then((r) => r.json());
+        const at = tr.access_token;
+        if (!at) throw new Error('token refresh failed');
+        const gFetch = async (url) => {
+          const r = await fetch(url, { headers: { Authorization: `Bearer ${at}` } });
+          if (!r.ok) throw new Error(`${url.split('?')[0]} → ${r.status}`);
+          return r.json();
+        };
+        const cals = (await gFetch('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=15')).items || [];
+        const coupleRe = /(mike.*adam|adam.*mike|m\s*&\s*a)/i;
+        let picked = cals.filter((c) => coupleRe.test(c.summary || ''));
+        const source = picked.length ? picked.map((c) => c.summary).join(', ') : 'all-calendars';
+        if (!picked.length) picked = cals.slice(0, 10);
+
+        const fmtET = (d, opts) => new Date(d).toLocaleString('en-US', { timeZone: ET, ...opts });
+        const now = new Date();
+        const horizonMs = new Date(Date.now() + 14 * 86400 * 1000);
+        const dayMap = {};
+        for (const cal of picked) {
+          const ev = await gFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?` + new URLSearchParams({
+            timeMin: now.toISOString(), timeMax: horizonMs.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '50',
+          }));
+          for (const e of ev.items || []) {
+            if (e.status === 'cancelled' || !e.summary) continue;
+            const startIso = e.start?.dateTime || (e.start?.date ? e.start.date + 'T12:00:00' : null);
+            if (!startIso) continue;
+            const d = new Date(startIso);
+            const key = `${fmtET(d, { year: 'numeric' })}-${fmtET(d, { month: '2-digit' })}-${fmtET(d, { day: '2-digit' })}`;
+            const label = fmtET(d, { weekday: 'short', month: 'numeric', day: 'numeric' });
+            const time = e.start?.dateTime ? fmtET(d, { hour: 'numeric', minute: '2-digit' }) : '';
+            if (!dayMap[key]) dayMap[key] = { date: key, label, events: [] };
+            if (dayMap[key].events.length < 8) {
+              dayMap[key].events.push({ time, title: String(e.summary).slice(0, 80), calendar: source === 'all-calendars' ? (cal.summary || '').slice(0, 20) : '' });
+            }
+          }
+        }
+        const days = Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date));
+        await maDb.doc('tripData/calendar').set({ days, source, updatedAt: new Date().toISOString() });
+        calendarStatus = `${days.length} days from ${source}`;
+        const nextEv = days[0]?.events?.[0];
+        if (nextEv) lines.push(`Next on shared calendar: ${days[0].label} ${nextEv.time || ''} ${nextEv.title}.`);
+      }
+    } catch (e) {
+      console.warn('couple calendar sync failed:', e.message);
+      calendarStatus = `error: ${e.message}`;
+    }
+
     // ── 1) lifeos slice ──
     const coupleContext = lines.join('\n') || 'No joint data found.';
     await lifeDb.doc(`lifeos/${OWNER_UID}`).set({ coupleContext, coupleUpdatedAt: new Date().toISOString() }, { merge: true });
@@ -130,7 +194,7 @@ export default async function handler(req, res) {
       updatedAt: new Date().toISOString(),
     });
 
-    return res.status(200).json({ ok: true, lines: lines.length, banner: text });
+    return res.status(200).json({ ok: true, lines: lines.length, banner: text, calendar: calendarStatus });
   } catch (e) {
     console.error('cron-couple-context', e);
     return res.status(500).json({ error: e.message });
