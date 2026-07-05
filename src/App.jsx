@@ -1486,7 +1486,9 @@ export default function App() {
   useEffect(() => {
     try {
       const p = new URLSearchParams(window.location.search);
-      if (p.get('rupert') === '1' || p.get('view') === 'rupert') openRupert();
+      // ?ask=<text> (from spoke apps, e.g. Rainbow Reality's sell-vs-hold review
+      // button) pre-fills the chat input so Mike can review/edit before sending.
+      if (p.get('rupert') === '1' || p.get('view') === 'rupert') openRupert(p.get('ask') || '');
       // ?alert=<id> from a tapped push: strip it from the URL once consumed so a
       // reload doesn't re-open it (openAlertId already initialised from the param).
       if (p.get('alert')) window.history.replaceState({}, '', window.location.pathname);
