@@ -15,18 +15,16 @@ import {
   WEEK_DAYS, WEEK_EVENTS, MAILS, CODING_UPDATES,
 } from './seed';
 
-// One nav, two skins: these five live in the bottom dock (mobile) and the top bar
-// (desktop). Inbox/Calendar/People/Email live as a grid at the bottom of Home;
-// the Life tab holds the five pillars.
+// One nav, two skins: bottom dock (mobile) and top bar (desktop).
+// The Rupert tab (id 'home' for deep-link back-compat) holds three sub-tabs:
+// Today's brief · Planning (today's items) · Signals.
 const PRIMARY_TABS = [
-  ['home', '🏠', 'Home'], ['planning', '🗺️', 'Planning'], ['life', '🧭', 'Life'], ['memories', '📸', 'Memories'], ['vault', '🚨', 'Vault'],
+  ['home', '🦚', 'Rupert'], ['planning', '🗺️', 'Planning'], ['calendar', '🗓️', 'Calendar'], ['people', '👥', 'People'],
+  ['life', '🧭', 'Life'], ['memories', '📸', 'Memories'], ['vault', '🚨', 'Vault'],
 ];
-const HOME_ITEMS = [
-  ['signals', '📥', 'Signals', 'Proposals + email, one triage pass'],
-  ['calendar', '🗓️', 'Calendar', 'Your week, color-coded by pillar'],
-  ['people', '👥', 'People', 'Personal · professional · opportunities'],
+const HOME_SUBTABS = [
+  ['brief', '☀️', "Today's brief"], ['plan', '🎯', 'Planning'], ['signals', '📥', 'Signals'],
 ];
-const HOME_CHILDREN = new Set(HOME_ITEMS.map(([id]) => id));
 
 
 // Mike is US Eastern — NEVER use toISOString() for "today" (it's UTC; after ~8pm ET
@@ -766,50 +764,56 @@ function RupertTaskStrip({ dayPlan, alerts, onOpenAlert }) {
   );
 }
 
-function Today({ data, onOpenAlert, onAllAlerts, onSearchAlerts, markTodayDone, delayTodayItem, activatePlan, addTodayItem, goTab, onPlanMore, setTaskNote, toggleTask, setPlanStatus, dismissTask }) {
+// "Planning" sub-tab: today's items — the action center.
+function TodayPlan({ data, onOpenAlert, markTodayDone, delayTodayItem, onPlanMore, setTaskNote, toggleTask, dismissTask }) {
   const [showDone, setShowDone] = useState(false);
-  const brief = data && data.todayBrief && data.todayBrief.text;
-  const alerts = (data && data.alerts) || [];
   const all = (data && data.todayItems ? data.todayItems : []).filter((t) => t.status !== 'delayed');
   const [openStep, setOpenStep] = useState(null); // {plan, stage, task, todayId}
   const stepHandler = (t) => { const hit = findPlanStep(data.plans, t); return hit ? () => setOpenStep({ ...hit, todayId: t.id }) : null; };
   const items = all.filter((t) => t.status === 'pending');
   const doneItems = all.filter((t) => t.status === 'done');
-  const openCount = items.length;
-  const briefSub = brief ? firstContentLine(brief).slice(0, 90) : '';
-  // Preview the newest NON-brief alert when the brief already has its own card above —
-  // otherwise Home showed the same brief twice back-to-back.
+
+  return (
+    <section>
+      <div className="card">
+        <div className="between"><h3 style={{ margin: 0 }}>🎯 Today</h3><span className="dim" style={{ fontSize: 12 }}>{items.length ? `${items.length} open` : ''}</span></div>
+        <div style={{ marginTop: 10 }}>
+          {items.length ? items.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} onStep={stepHandler(t)} onDelete={dismissTask} />)
+            : <p className="dim" style={{ fontSize: 13 }}>{doneItems.length ? 'All done — strong day. 🎉' : 'Nothing queued yet — tap ➕ Plan more or run the morning check-in.'}</p>}
+          {doneItems.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <button className="btn def" style={{ fontSize: 12 }} onClick={() => setShowDone(!showDone)}>✓ {doneItems.length} done today {showDone ? '▾' : '▸'}</button>
+              {showDone && doneItems.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} onStep={stepHandler(t)} />)}
+            </div>
+          )}
+          <div className="row" style={{ gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn def" style={{ fontSize: 12 }} onClick={onPlanMore}>➕ Plan more</button>
+            <span className="dim" style={{ fontSize: 11 }}>✓ done · ⏰ delay 1d/1w/1mo (returns on its date)</span>
+          </div>
+          {openStep && <StepDialog step={openStep} onClose={() => setOpenStep(null)} setTaskNote={setTaskNote} toggleTask={toggleTask} markTodayDone={markTodayDone} />}
+        </div>
+      </div>
+      <RupertTaskStrip dayPlan={data.dayPlan} alerts={data.alerts} onOpenAlert={onOpenAlert} />
+    </section>
+  );
+}
+
+// "Today's brief" sub-tab: the morning brief (open), alert history, content fallback.
+function BriefView({ data, onOpenAlert, onAllAlerts, onSearchAlerts, activatePlan, addTodayItem, goTab, toggleTask, setPlanStatus, markTodayDone }) {
+  const brief = data && data.todayBrief && data.todayBrief.text;
+  const alerts = (data && data.alerts) || [];
+  // Preview the newest NON-brief alert when the brief already has its own card above.
   const latest = (brief ? alerts.find((a) => a.type !== 'brief') : null) || alerts[0];
 
   return (
     <section>
-      {/* 🎯 Today — the action center, open by default */}
-      <Collapse icon="🎯" title="Today" right={openCount ? `${openCount} open` : ''} defaultOpen
-        sub={items.length ? items.filter((t) => t.status === 'pending').map((t) => t.title).join(' · ').slice(0, 90) : null}>
-        {items.length ? items.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} onStep={stepHandler(t)} onDelete={dismissTask} />)
-          : <p className="dim" style={{ fontSize: 13 }}>{doneItems.length ? 'All done — strong day. 🎉' : 'Nothing queued yet — tap ➕ Plan more or run the morning check-in.'}</p>}
-        {doneItems.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <button className="btn def" style={{ fontSize: 12 }} onClick={() => setShowDone(!showDone)}>✓ {doneItems.length} done today {showDone ? '▾' : '▸'}</button>
-            {showDone && doneItems.map((t) => <TodayItemRow key={t.id} t={t} onDone={markTodayDone} onDelay={delayTodayItem} onStep={stepHandler(t)} />)}
-          </div>
-        )}
-        <div className="row" style={{ gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn def" style={{ fontSize: 12 }} onClick={onPlanMore}>➕ Plan more</button>
-          <span className="dim" style={{ fontSize: 11 }}>✓ done · ⏰ delay 1d/1w/1mo (returns on its date)</span>
-        </div>
-        {openStep && <StepDialog step={openStep} onClose={() => setOpenStep(null)} setTaskNote={setTaskNote} toggleTask={toggleTask} markTodayDone={markTodayDone} />}
-      </Collapse>
-
-      <RupertTaskStrip dayPlan={data.dayPlan} alerts={data.alerts} onOpenAlert={onOpenAlert} />
-
-      {/* ☀️ Brief — collapsed to its first meaningful line; focus lines are actionable */}
-      {brief && (
-        <Collapse icon="☀️" title="Rupert's brief" sub={briefSub} right={data.todayBrief.date || ''}>
-          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55 }}><Linkified text={brief} /></div>
+      {brief ? (
+        <div className="card" style={{ borderLeft: '3px solid var(--teal)' }}>
+          <div className="between"><h3 style={{ margin: 0 }}>☀️ Rupert's brief</h3><span className="dim" style={{ fontSize: 12 }}>{data.todayBrief.date || ''}</span></div>
+          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55, marginTop: 10 }}><Linkified text={brief} /></div>
           <BriefActions brief={brief} plans={data.plans} todayItems={data.todayItems} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} toggleTask={toggleTask} setPlanStatus={setPlanStatus} markTodayDone={markTodayDone} />
-        </Collapse>
-      )}
+        </div>
+      ) : <p className="banner">No brief yet today — it lands each morning at your set time (⚙️ Settings).</p>}
 
       {/* 🔔 Alerts — collapsed to the newest one */}
       {alerts.length > 0 && (
@@ -1129,7 +1133,7 @@ function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick }) {
   const myplans = plans.filter((x) => x.pk === pk);
   return (
     <section>
-      <button className="backbtn" onClick={onBack}>‹ back</button>
+      {onBack && <button className="backbtn" onClick={onBack}>‹ back</button>}
       <div className="strat-pillar" style={{ '--c': c }}>
         <h4>{p.em} {p.name}</h4>
         <ul>{p.goals.map((g, i) => <li key={i}>{g}</li>)}</ul>
@@ -1238,17 +1242,17 @@ function pillarStatus(data) {
   return { health, rel, fin, purpose, fun };
 }
 
-function LifeView({ counts, openPillar, data }) {
+function LifeView({ counts, pillar, openPillar, data, proposals, onResolve, onPlanClick }) {
   const status = pillarStatus(data);
   return (
     <section>
-      <div className="section-title">🧭 Life <span className="dim" style={{ fontWeight: 500 }}>· your five pillars — tap one to drill in</span></div>
+      <div className="section-title">🧭 Life <span className="dim" style={{ fontWeight: 500 }}>· tap a pillar — it opens right here</span></div>
       <div className="hero lifegrid">
         {Object.entries(PILLARS).map(([k, p]) => {
           const c = `var(${COL[k]})`;
           const need = counts[k];
           return (
-            <div className="ptile" style={{ '--c': c }} key={k} onClick={() => openPillar(k)}>
+            <div className={'ptile' + (pillar === k ? ' sel' : '')} style={{ '--c': c }} key={k} onClick={() => openPillar(k)}>
               {need > 0 ? <div className="badge" style={{ '--c': c }}>{need}</div> : <div className="okdot" />}
               <div className="em">{p.em}</div>
               <div className="pnm">{p.name}</div>
@@ -1258,22 +1262,10 @@ function LifeView({ counts, openPillar, data }) {
           );
         })}
       </div>
-      <p className="banner">Status lines come from what Rupert syncs overnight (training, money, health, travel) + your plans and memories here.</p>
+      {pillar
+        ? <PillarArea pk={pillar} proposals={proposals} plans={data.plans} onResolve={onResolve} onPlanClick={onPlanClick} />
+        : <p className="banner">Status lines come from what Rupert syncs overnight (training, money, health, travel) + your plans and memories here.</p>}
     </section>
-  );
-}
-
-// Compact quick-access row near the top of Home (Signals, Calendar, People).
-function QuickRow({ proposals, goTab }) {
-  return (
-    <div className="quickrow">
-      {HOME_ITEMS.map(([id, ic, label]) => (
-        <button key={id} className="qchip" onClick={() => goTab(id)}>
-          {ic} {label}
-          {id === 'signals' && proposals > 0 && <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 5 }}>{proposals}</span>}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -1437,13 +1429,17 @@ export default function App() {
   const [authReady, setAuthReady] = useState(!FIREBASE_READY);
   const [authErr, setAuthErr] = useState('');
   const [tab, setTab] = useState(() => {
-    // A tapped push lands on Home (brief + content live at the top of Home).
+    // A tapped push lands on the Rupert tab; ?view=<pillar> opens Life with it selected.
     try {
       const p = new URLSearchParams(window.location.search);
-      return p.get('view') || 'home';
+      const v = p.get('view') || 'home';
+      return PILLARS[v] ? 'life' : v;
     } catch { return 'home'; }
   });
-  const [pillar, setPillar] = useState(null);
+  const [homeTab, setHomeTab] = useState('brief'); // Rupert sub-tab: brief | plan | signals
+  const [pillar, setPillar] = useState(() => {
+    try { const v = new URLSearchParams(window.location.search).get('view'); return PILLARS[v] ? v : null; } catch { return null; }
+  });
   const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
   const [rupertOpen, setRupertOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1610,7 +1606,7 @@ export default function App() {
   Object.keys(PILLARS).forEach((k) => { counts[k] = data.proposals.filter((p) => p.pk === k).length; });
 
   const now = new Date();
-  const openPillar = (k) => { setPillar(k); };
+  const openPillar = (k) => { setPillar((cur) => (cur === k ? null : k)); setTab('life'); };
   const goTab = (t) => { setPillar(null); setOpenAlertId(null); setAlertsOpen(null); setSearchOpen(false); setTab(t); };
   // "Do it" on an inbox proposal: commit its concrete next-step onto Today's list
   // (so it has a real home), clear the proposal, and jump to Home to see it land.
@@ -1644,7 +1640,7 @@ export default function App() {
       {/* Desktop top bar — same five items as the mobile dock */}
       <nav className="topnav">
         {PRIMARY_TABS.map(([id, ic, label]) => (
-          <button className={'tab' + (!pillar && (tab === id || (id === 'home' && HOME_CHILDREN.has(tab))) ? ' active' : '')} key={id} onClick={() => goTab(id)}>
+          <button className={'tab' + (tab === id ? ' active' : '')} key={id} onClick={() => goTab(id)}>
             {ic} {label}{id === 'home' && data.proposals.length > 0 ? <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{data.proposals.length}</span> : null}
           </button>
         ))}
@@ -1687,26 +1683,37 @@ export default function App() {
         <SearchView data={data} onBack={() => setSearchOpen(false)} onOpenAlert={(id) => { setSearchOpen(false); setOpenAlertId(id); }} goTab={goTab} />
       ) : alertsOpen ? (
         <AlertsView alerts={data.alerts || []} onOpen={setOpenAlertId} onBack={() => setAlertsOpen(null)} autoFocusSearch={alertsOpen === 'search'} prefs={data.alertPrefs} setPref={setAlertPref} />
-      ) : pillar ? (
-        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('life')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
       ) : (
         <>
           {tab === 'home' && (
             <>
-              <QuickRow proposals={data.proposals.length} goTab={goTab} />
-              <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} setPlanStatus={setPlanStatus} dismissTask={dismissTask} />
-              {FIREBASE_READY && (
-                <div className="locrow" style={{ marginTop: 12 }}>
-                  <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>
-                  {locMsg && <span className="dim" style={{ fontSize: 12 }}>{locMsg}</span>}
-                  {!locMsg && data.location && <span className="dim" style={{ fontSize: 12 }}>last: {data.location.place || `${data.location.lat}, ${data.location.lng}`} · {relTime(data.location.at)}</span>}
-                </div>
+              <div className="subtabs">
+                {HOME_SUBTABS.map(([id, ic, label]) => (
+                  <button key={id} className={'tab' + (homeTab === id ? ' active' : '')} onClick={() => setHomeTab(id)}>
+                    {ic} {label}
+                    {id === 'signals' && data.proposals.length > 0 && <span className="pill" style={{ background: homeTab === id ? '#04201c' : 'var(--teal)', color: homeTab === id ? 'var(--teal)' : '#04201c', marginLeft: 5 }}>{data.proposals.length}</span>}
+                  </button>
+                ))}
+              </div>
+              {homeTab === 'brief' && <BriefView data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} toggleTask={toggleTask} setPlanStatus={setPlanStatus} markTodayDone={markTodayDone} />}
+              {homeTab === 'plan' && (
+                <>
+                  <TodayPlan data={data} onOpenAlert={setOpenAlertId} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} dismissTask={dismissTask} />
+                  {FIREBASE_READY && (
+                    <div className="locrow" style={{ marginTop: 12 }}>
+                      <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>
+                      {locMsg && <span className="dim" style={{ fontSize: 12 }}>{locMsg}</span>}
+                      {!locMsg && data.location && <span className="dim" style={{ fontSize: 12 }}>last: {data.location.place || `${data.location.lat}, ${data.location.lng}`} · {relTime(data.location.at)}</span>}
+                    </div>
+                  )}
+                </>
               )}
+              {homeTab === 'signals' && <Signals proposals={data.proposals} onResolve={resolveProposal} data={data} />}
             </>
           )}
-          {tab === 'life' && <LifeView counts={counts} openPillar={openPillar} data={data} />}
-          {HOME_CHILDREN.has(tab) && <button className="backbtn" onClick={() => goTab('home')}>‹ home</button>}
-          {tab === 'signals' && <Signals proposals={data.proposals} onResolve={resolveProposal} data={data} />}
+          {tab === 'life' && <LifeView counts={counts} pillar={pillar} openPillar={openPillar} data={data}
+            proposals={data.proposals} onResolve={resolveProposal}
+            onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />}
           {tab === 'calendar' && <Calendar data={data} />}
           {tab === 'planning' && (
             <PlanningHub
@@ -1741,7 +1748,7 @@ export default function App() {
       {/* Mobile floating dock — same five items as the desktop top bar (peacock lives in the header) */}
       <div className="dock">
         {PRIMARY_TABS.map(([id, ic, lb]) => (
-          <button key={id} className={'dock-item' + (!pillar && (tab === id || (id === 'home' && HOME_CHILDREN.has(tab))) ? ' active' : '')}
+          <button key={id} className={'dock-item' + (tab === id ? ' active' : '')}
             title={lb} aria-label={lb} onClick={() => goTab(id)}>
             <span className="di">{ic}</span>
             {id === 'home' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}

@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron-fitness-context",
-      "schedule": "50 10 * * *"
+      "schedule": "50 10,14 * * *"
     },
     {
       "path": "/api/cron-finance-context",
