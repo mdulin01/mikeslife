@@ -22,10 +22,9 @@ const PRIMARY_TABS = [
   ['home', '🏠', 'Home'], ['planning', '🗺️', 'Planning'], ['life', '🧭', 'Life'], ['memories', '📸', 'Memories'], ['vault', '🚨', 'Vault'],
 ];
 const HOME_ITEMS = [
-  ['inbox', '📥', 'Inbox', 'Coach proposals + signals to triage'],
+  ['signals', '📥', 'Signals', 'Proposals + email, one triage pass'],
   ['calendar', '🗓️', 'Calendar', 'Your week, color-coded by pillar'],
   ['people', '👥', 'People', 'Personal · professional · opportunities'],
-  ['email', '✉️', 'Email', 'Signals from your allow-listed lanes'],
 ];
 const HOME_CHILDREN = new Set(HOME_ITEMS.map(([id]) => id));
 
@@ -849,12 +848,26 @@ function Proposal({ p, onResolve }) {
   );
 }
 
-function Inbox({ proposals, onResolve }) {
+// One triage pass: coach proposals up top, email signals below.
+function Signals({ proposals, onResolve, data }) {
+  const live = !!(data.emailSignals && data.emailSignals.length);
+  const mails = live ? data.emailSignals : MAILS;
   return (
     <section>
-      <div className="section-title">For you to triage — coach proposals + signals from email</div>
+      <div className="section-title">📥 Signals <span className="dim" style={{ fontWeight: 500 }}>· one pass, then get on with the day</span></div>
       {proposals.length ? proposals.map((p) => <Proposal key={p.id} p={p} onResolve={onResolve} />)
-        : <p className="banner">Inbox zero. 🎉</p>}
+        : <p className="banner">Nothing to triage. 🎉</p>}
+      <div className="section-title" style={{ marginTop: 18 }}>✉️ From email <span className="dim" style={{ fontWeight: 500 }}>{live ? '(live)' : '(preview)'}</span></div>
+      <div className="card">
+        {mails.map((m, i) => (
+          <div className="mail" key={i}>
+            <span className="tag" style={{ background: 'rgba(148,163,184,.14)', color: `var(${m[1]})` }}>{m[0]}</span>
+            <div><div className="mf">{m[2]}</div><div className="ms">{m[3]}</div>
+              <span className="mact">{m[4]}<b style={{ color: `var(${m[1]})` }}>{m[5]}</b></span></div>
+          </div>
+        ))}
+      </div>
+      <p className="banner">Rupert watches defined email lanes (travel deals, recruiters, named contacts, bills) — never everything, never auto-replies.</p>
     </section>
   );
 }
@@ -1094,26 +1107,6 @@ function Calendar({ data }) {
   );
 }
 
-function Email({ data }) {
-  const live = !!(data.emailSignals && data.emailSignals.length);
-  const mails = live ? data.emailSignals : MAILS;
-  return (
-    <section>
-      <div className="section-title">Email signals · only the lanes you've allow-listed, classified by pillar <span className="dim">{live ? '(live)' : '(preview)'}</span></div>
-      <div className="card">
-        {mails.map((m, i) => (
-          <div className="mail" key={i}>
-            <span className="tag" style={{ background: 'rgba(148,163,184,.14)', color: `var(${m[1]})` }}>{m[0]}</span>
-            <div><div className="mf">{m[2]}</div><div className="ms">{m[3]}</div>
-              <span className="mact">{m[4]}<b style={{ color: `var(${m[1]})` }}>{m[5]}</b></span></div>
-          </div>
-        ))}
-      </div>
-      <p className="banner">Rupert watches defined lanes (travel deals, recruiters, named contacts, bills) — never everything, never auto-replies. Drafts only; you send.</p>
-    </section>
-  );
-}
-
 function CodingUpdates() {
   return (
     <section>
@@ -1199,8 +1192,54 @@ function FocusView({ focus, data, openRupert, onOpenApp }) {
 }
 
 // ───────────────────────── Life ─────────────────────────
-// The strategic view: the five pillars — status at a glance, tap to drill in.
-function LifeView({ counts, openPillar }) {
+// The strategic view: the five pillars with a real status line each, pulled
+// from the context slices Rupert already syncs (fitness/finance/health/travel)
+// plus the app's own data (plans, memories, people).
+const sliceLine = (slice, prefixes = []) => {
+  const lines = String(slice || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  for (const p of prefixes) { const hit = lines.find((l) => l.startsWith(p)); if (hit) return hit; }
+  return lines[0];
+};
+const daysAgo = (ymd) => {
+  if (!ymd) return null;
+  const d = Math.floor((Date.now() - new Date(String(ymd).slice(0, 10) + 'T12:00:00').getTime()) / 86400000);
+  return d < 0 ? null : d;
+};
+
+function pillarStatus(data) {
+  const activeByPk = (pk) => (data.plans || []).filter((p) => p.status === 'active' && p.pk === pk).length;
+  const plansBit = (pk) => { const n = activeByPk(pk); return n ? `${n} active plan${n > 1 ? 's' : ''}` : null; };
+
+  // Health: today's session > recovery > latest weight > health flag.
+  const health = sliceLine(data.fitnessContext, ["Today's planned session:", 'Recovery:', 'Latest weight:'])
+    || sliceLine(data.healthContext) || plansBit('health');
+
+  // Relationships: freshest memory + people counts.
+  const mem = (data.memories || [])[0];
+  const dm = mem ? daysAgo(mem.date) : null;
+  const npers = ((data.people && data.people.personal) || []).length;
+  const rel = [dm != null ? `last memory ${dm === 0 ? 'today' : dm + 'd ago'}` : null, npers ? `${npers} personal` : null, plansBit('rel')]
+    .filter(Boolean).join(' · ') || null;
+
+  // Finances: net worth + top flag.
+  const nw = sliceLine(data.financeContext, ['Net worth:']);
+  const flag = sliceLine(data.financeContext, ['Top flag:']);
+  const fin = [nw, flag && flag.replace('Top flag: ', '⚠ ')].filter(Boolean).join(' · ') || plansBit('fin');
+
+  // Purpose: opportunities in the pipeline + active plans.
+  const nopp = ((data.people && data.people.opportunities) || []).length;
+  const purpose = [nopp ? `${nopp} opportunit${nopp > 1 ? 'ies' : 'y'} to screen` : null, plansBit('purpose')]
+    .filter(Boolean).join(' · ') || null;
+
+  // Fun & Travel: next trip from the travel slice, else plans.
+  const fun = sliceLine(data.travelContext) || plansBit('fun');
+
+  return { health, rel, fin, purpose, fun };
+}
+
+function LifeView({ counts, openPillar, data }) {
+  const status = pillarStatus(data);
   return (
     <section>
       <div className="section-title">🧭 Life <span className="dim" style={{ fontWeight: 500 }}>· your five pillars — tap one to drill in</span></div>
@@ -1214,25 +1253,24 @@ function LifeView({ counts, openPillar }) {
               <div className="em">{p.em}</div>
               <div className="pnm">{p.name}</div>
               <div className="pst">{need > 0 ? `${need} need${need > 1 ? '' : 's'} you` : 'on track'}</div>
+              {status[k] && <div className="psl">{status[k]}</div>}
             </div>
           );
         })}
       </div>
+      <p className="banner">Status lines come from what Rupert syncs overnight (training, money, health, travel) + your plans and memories here.</p>
     </section>
   );
 }
 
-// Quick-access grid at the bottom of Home (Inbox, Calendar, People, Email).
-function HomeGrid({ proposals, goTab }) {
+// Compact quick-access row near the top of Home (Signals, Calendar, People).
+function QuickRow({ proposals, goTab }) {
   return (
-    <div className="hubgrid" style={{ marginTop: 4 }}>
-      {HOME_ITEMS.map(([id, ic, label, sub]) => (
-        <button key={id} className="hubitem" onClick={() => goTab(id)}>
-          <span className="hi">{ic}</span>
-          <span style={{ minWidth: 0 }}>
-            <span className="ht">{label}{id === 'inbox' && proposals > 0 && <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{proposals}</span>}</span>
-            <span className="hs">{sub}</span>
-          </span>
+    <div className="quickrow">
+      {HOME_ITEMS.map(([id, ic, label]) => (
+        <button key={id} className="qchip" onClick={() => goTab(id)}>
+          {ic} {label}
+          {id === 'signals' && proposals > 0 && <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 5 }}>{proposals}</span>}
         </button>
       ))}
     </div>
@@ -1655,8 +1693,8 @@ export default function App() {
         <>
           {tab === 'home' && (
             <>
+              <QuickRow proposals={data.proposals.length} goTab={goTab} />
               <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} setPlanStatus={setPlanStatus} dismissTask={dismissTask} />
-              <HomeGrid proposals={data.proposals.length} goTab={goTab} />
               {FIREBASE_READY && (
                 <div className="locrow" style={{ marginTop: 12 }}>
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>
@@ -1666,11 +1704,10 @@ export default function App() {
               )}
             </>
           )}
-          {tab === 'life' && <LifeView counts={counts} openPillar={openPillar} />}
+          {tab === 'life' && <LifeView counts={counts} openPillar={openPillar} data={data} />}
           {HOME_CHILDREN.has(tab) && <button className="backbtn" onClick={() => goTab('home')}>‹ home</button>}
-          {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
+          {tab === 'signals' && <Signals proposals={data.proposals} onResolve={resolveProposal} data={data} />}
           {tab === 'calendar' && <Calendar data={data} />}
-          {tab === 'email' && <Email data={data} />}
           {tab === 'planning' && (
             <PlanningHub
               data={data}
@@ -1705,8 +1742,8 @@ export default function App() {
       <div className="dock">
         {PRIMARY_TABS.map(([id, ic, lb]) => (
           <button key={id} className={'dock-item' + (!pillar && (tab === id || (id === 'home' && HOME_CHILDREN.has(tab))) ? ' active' : '')}
-            onClick={() => goTab(id)}>
-            <span className="di">{ic}</span>{lb}
+            title={lb} aria-label={lb} onClick={() => goTab(id)}>
+            <span className="di">{ic}</span>
             {id === 'home' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}
           </button>
         ))}
