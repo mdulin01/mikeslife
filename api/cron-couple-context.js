@@ -12,6 +12,7 @@
 // Required env: CRON_SECRET, FIREBASE_SERVICE_ACCOUNT, FIREBASE_SA_FITNESS
 import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { llmChat, pickProvider } from './_llm.js';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
 const APP_URL = 'https://mikeandadam.app';
@@ -98,6 +99,27 @@ export default async function handler(req, res) {
     for (const e of arr(pe.exists ? pe.data().events : [])) {
       if (e.date && e.date >= today && e.date <= horizon) lines.push(`Event soon: ${e.name || e.title} ${e.date}.`);
     }
+
+    // ── Weekly check-ins (couple ritual — moods + who's missing) ──
+    let checkinBit = null;
+    try {
+      const ciSnap = await maDb.collection('tripData/checkins/entries').get();
+      const cis = ciSnap.docs.map((d) => d.data());
+      if (cis.length) {
+        const sunday = new Date(etNow()); sunday.setDate(sunday.getDate() - sunday.getDay());
+        const thisWeek = ymd(sunday);
+        const cur = cis.filter((c) => c.week === thisWeek);
+        const done = cur.map((c) => `${c.by} ${c.mood || ''}`).join(', ');
+        if (cur.length) lines.push(`This week's check-in: ${done}${cur.length < 2 ? ' (waiting on the other)' : ''}.`);
+        const latestFull = [...new Set(cis.map((c) => c.week))].sort().reverse()
+          .map((w) => cis.filter((c) => c.week === w)).find((g) => g.length === 2);
+        if (latestFull) {
+          lines.push(`Last full check-in (${latestFull[0].week}): ` + latestFull.map((c) => `${c.by} felt ${c.mood}${c.appreciated ? `, appreciated "${c.appreciated}"` : ''}`).join('; ') + '.');
+        }
+        if (cur.length === 1 && etNow().getDay() === 0) checkinBit = `${cur[0].by} checked in — one 💌 to go`;
+      }
+    } catch (e) { console.warn('checkins read failed:', e.message); }
+    if (checkinBit) bannerBits.push(checkinBit);
 
     // ── Memory recency (subcollection first) ──
     let lastMemoryDate = null;
@@ -192,9 +214,21 @@ export default async function handler(req, res) {
     await lifeDb.doc(`lifeos/${OWNER_UID}`).set({ coupleContext, coupleUpdatedAt: new Date().toISOString() }, { merge: true });
 
     // ── 2) banner back into mikeandadam (rupert/coupleNote) ──
-    const text = bannerBits.length
+    // Rupert writes the banner himself now. Hard rules baked into the prompt:
+    // observations + gentle suggestions, NEVER guilt, nagging, or scores.
+    let text = bannerBits.length
       ? `Rupert's couple check: ${bannerBits.join(' · ')}`
       : `Rupert's couple check: all quiet — enjoy each other today. 💛`;
+    try {
+      const raw = await llmChat({
+        provider: pickProvider(null),
+        system: 'You are Rupert, a warm, lightly playful peacock concierge for Mike and Adam, a couple. Write ONE banner line (max 150 characters, may use 1-2 emoji) for their shared app, drawing on the facts given. Voice: affectionate observer, dry wit welcome. NEVER guilt-trip, nag, score, or mention absences of activity as failures. Prefer the most interesting or nearest-in-time fact. Output the line only.',
+        messages: [{ role: 'user', content: 'Facts:\n' + lines.join('\n') + (bannerBits.length ? '\nHighlights: ' + bannerBits.join(' | ') : '') }],
+        maxTokens: 80,
+      });
+      const line = String(raw || '').trim().replace(/^"|"$/g, '');
+      if (line && line.length <= 200) text = `🦚 ${line}`;
+    } catch (e) { console.warn('LLM banner failed, using deterministic text:', e.message); }
     await maDb.doc('rupert/coupleNote').set({
       text,
       signals: [
@@ -205,7 +239,50 @@ export default async function handler(req, res) {
       updatedAt: new Date().toISOString(),
     });
 
-    return res.status(200).json({ ok: true, lines: lines.length, banner: text, calendar: calendarStatus });
+    // ── Monthly story: on the 1st (ET), write last month's recap into the
+    // memories feed as a special 📖 post (id story-YYYY-MM, idempotent). ──
+    let storyStatus = 'not the 1st';
+    if (etNow().getDate() === 1) {
+      const prev = new Date(etNow()); prev.setDate(0); // last day of previous month
+      const ym = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+      const storyRef = maDb.doc(`tripData/shared/memories/story-${ym}`);
+      if ((await storyRef.get()).exists) {
+        storyStatus = `story-${ym} exists`;
+      } else {
+        try {
+          const memSnap = await maDb.collection('tripData/shared/memories')
+            .where('date', '>=', `${ym}-01`).where('date', '<=', `${ym}-31`).get();
+          const monthMems = memSnap.docs.map((d) => d.data()).filter((m) => !m.autoStory);
+          const monthName = prev.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: ET });
+          const facts = [
+            ...monthMems.map((m) => `Memory ${m.date}: ${m.title}${m.location ? ` (${m.location})` : ''}${m.description ? ` — ${m.description}` : ''}`),
+            ...arr(sharedData.trips).filter((t) => (tripStart(t) || '').startsWith(ym)).map((t) => `Trip: ${t.destination || t.name} starting ${tripStart(t)}`),
+          ];
+          if (facts.length >= 2) {
+            const story = await llmChat({
+              provider: pickProvider(null),
+              system: 'You are Rupert, writing a short, warm monthly recap of Mike and Adam\'s life together for their private memory feed. 3-4 sentences, past tense, second person plural ("you two"), specific to the facts, a little literary but not saccharine. No headers, no emoji spam (max 1). Output the paragraph only.',
+              messages: [{ role: 'user', content: `Month: ${monthName}\nFacts:\n` + facts.join('\n') }],
+              maxTokens: 220,
+            });
+            const textStory = String(story || '').trim();
+            if (textStory) {
+              await storyRef.set({
+                id: `story-${ym}`, category: 'story', icon: '📖', autoStory: true,
+                date: `${ym}-${String(prev.getDate()).padStart(2, '0')}`,
+                title: `Your ${monthName}`,
+                description: textStory,
+                image: '', images: [], link: '', comment: '',
+                createdAt: new Date().toISOString(),
+              });
+              storyStatus = `wrote story-${ym}`;
+            } else storyStatus = 'llm empty';
+          } else storyStatus = 'too few facts';
+        } catch (e) { console.warn('monthly story failed:', e.message); storyStatus = 'error: ' + e.message; }
+      }
+    }
+
+    return res.status(200).json({ ok: true, lines: lines.length, banner: text, calendar: calendarStatus, story: storyStatus });
   } catch (e) {
     console.error('cron-couple-context', e);
     return res.status(500).json({ error: e.message });
