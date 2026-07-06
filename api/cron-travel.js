@@ -19,7 +19,7 @@
 import OpenAI from 'openai';
 import { createHash } from 'node:crypto';
 import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { dataPush } from './_push.js';
 
@@ -233,12 +233,43 @@ export default async function handler(req, res) {
             flights: segs.filter((s) => s.type === 'flight').map((s, i) => ({ id: 'ms' + i, addedBy: 'Mike', airline: '', flightNo: s.title, date: s.date, depart: s.time || '', arrive: '', confirmation: s.conf || '' })),
             hotels: segs.filter((s) => s.type === 'hotel').map((s, i) => ({ id: 'mh' + i, addedBy: 'Mike', name: s.title, address: s.location || '', checkIn: s.date, checkOut: '' })),
             events: segs.filter((s) => ['activity', 'food', 'note'].includes(s.type)).map((s, i) => ({ id: 'me' + i, addedBy: 'Mike', name: s.title + (s.notes ? ' — ' + s.notes : ''), date: s.date, time: s.time || '', location: s.location || '' })),
+            // Verbatim segments (2026-07-06): mikeandadam renders a mikestravel-style
+            // day-by-day itinerary from these; the legacy arrays above stay for old UI bits.
+            segments: segs.map((g) => ({ id: g.id || '', type: g.type || 'note', title: g.title || '', date: g.date || '', time: g.time || '', conf: g.conf || '', location: g.location || '', notes: g.notes || '' })),
             links: prev.links || [], packingList: prev.packingList || [], budget: prev.budget || { total: 0, expenses: [] }, photos: prev.photos || [], notes: prev.notes || [],
           };
         }
         const mirrorHash = createHash('sha256').update(JSON.stringify({ m: mirrors, d: Object.fromEntries(Object.entries(details).filter(([k]) => k.startsWith('mt-'))) })).digest('hex');
         if (mirrorHash !== life.maaTravelMirrorHash) {
-          const native = (cur.trips || []).filter((t) => t.source !== 'mikestravel');
+          // Absorb native duplicates: a native mikeandadam trip that matches a
+          // mirrored trip (name overlap + date overlap) is dropped, its
+          // tripDetails merged into the mirror's (mirror fields win when both
+          // exist; user-curated arrays like packing/photos are unioned).
+          const norm = (x) => String(x || '').toLowerCase();
+          const tStart = (t) => t.dates?.start || t.start || '';
+          const tEnd = (t) => t.dates?.end || t.end || tStart(t);
+          const isDup = (nat, mir) => {
+            const a = norm(nat.destination), b = norm(mir.destination);
+            const nameHit = a && b && (a.includes(b.split(' — ')[0].split(',')[0]) || b.includes(a.split(' — ')[0].split(',')[0]));
+            const dateHit = tStart(nat) && tStart(mir) && tStart(nat) <= tEnd(mir) && tStart(mir) <= tEnd(nat);
+            return nameHit && dateHit;
+          };
+          const native = [];
+          for (const nat of (cur.trips || []).filter((t) => t.source !== 'mikestravel')) {
+            const mir = mirrors.find((m) => isDup(nat, m));
+            if (!mir) { native.push(nat); continue; }
+            const natD = (cur.tripDetails || {})[nat.id] || {};
+            const mirD = details[mir.id] || {};
+            for (const key of ['links', 'packingList', 'photos', 'notes']) {
+              mirD[key] = [...(mirD[key] || []), ...(natD[key] || []).filter((x) => !(mirD[key] || []).some((y) => JSON.stringify(y) === JSON.stringify(x)))];
+            }
+            if ((!mirD.budget || !(mirD.budget.expenses || []).length) && natD.budget) mirD.budget = natD.budget;
+            details[mir.id] = mirD;
+            // merge:true deep-merges maps — a plain JS delete never reaches
+            // Firestore. FieldValue.delete() actually removes the stale key.
+            details[nat.id] = FieldValue.delete();
+            console.log('cron-travel: absorbed native duplicate trip', nat.id, '→', mir.id);
+          }
           await sharedRef.set({ trips: [...native, ...mirrors], tripDetails: details, lastUpdated: new Date().toISOString(), updatedBy: 'Rupert' }, { merge: true });
           maaSync = 'updated (' + mirrors.length + ' mirrored)';
         } else maaSync = 'unchanged';
