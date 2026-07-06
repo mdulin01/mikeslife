@@ -13,6 +13,27 @@ const PILLAR = {
   health: '🫀 Health', rel: '❤️ Relationships', fin: '💰 Finances', purpose: '🎯 Purpose', fun: '🏖️ Fun & Travel',
 };
 const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+// Semantic-ish dedupe: the LLM paraphrases (e.g. "Top cash back up to a 6-month
+// buffer" vs "Raise cash runway to at least 6 months"), so exact title match
+// isn't enough. Compare word overlap of title+act; containment >= 0.6 = same.
+// NB: separate normalizer from norm() — that one must stay byte-identical to the
+// app's dismissed-key writer. This one turns punctuation into spaces so
+// "buffer/HYSA" -> "buffer hysa", drops stopwords, and light-stems plurals so
+// word overlap actually works on the LLM's paraphrases.
+const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'this', 'that', 'his', 'her', 'your', 'are', 'was', 'has', 'have', 'get', 'one', 'about', 'before', 'after', 'whether', 'there']);
+const words = (t) => new Set(
+  String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ')
+    .filter((w) => w.length > 2 && !STOP.has(w))
+    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w)),
+);
+const contain = (a, b) => {
+  const A = words(a); const B = words(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0; for (const w of A) if (B.has(w)) inter += 1;
+  return inter / Math.min(A.size, B.size);
+};
+// Same proposal if the titles overlap strongly OR title+act does.
+const similar = (p, q) => contain(p.title, q.title) >= 0.5 || contain(`${p.title} ${p.act}`, `${q.title} ${q.act}`) >= 0.5;
 
 const SYS = `You are Rupert, Mike's chief of staff. From the context, surface 3-6 PROPOSALS worth his attention right now — things to act on or decide, drawn from real signals (email, money, training, health, plans). Each must be specific and grounded in the context (no generic advice, no invented facts).
 
@@ -23,7 +44,8 @@ Return ONLY a JSON array, no prose. Each item:
   "title": one concise line (the proposal),
   "why": one sentence of grounded rationale (cite the number/fact),
   "act": the single concrete next step }
-Respect Mike's recurring commitments — never propose anything that conflicts. Skip anything you can't ground in the context.`;
+Respect Mike's recurring commitments — never propose anything that conflicts. Skip anything you can't ground in the context.
+NEVER repeat or rephrase anything already in his inbox or previously dismissed — only genuinely NEW proposals. If nothing new is worth his attention, return [].`;
 
 export default async function handler(req, res) {
   if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -47,6 +69,11 @@ export default async function handler(req, res) {
     if (d.financeContext) ctx.push('Finances:\n' + d.financeContext);
     if (d.fitnessContext) ctx.push('Training:\n' + d.fitnessContext);
     if (d.healthContext) ctx.push('Health:\n' + d.healthContext);
+    // Anti-repeat context (kept out of ctx so it doesn't count toward the
+    // "enough signals" threshold below).
+    const meta = [];
+    if (existing.length) meta.push('Proposals ALREADY in his inbox (do NOT repeat or rephrase): ' + existing.map((p) => p.title).join(' | '));
+    if (dismissed.size) meta.push('Previously dismissed (never re-propose): ' + Array.from(dismissed).join(' | '));
     const active = (d.plans || []).filter((p) => p.status === 'active');
     if (active.length) ctx.push('Active plans: ' + active.map((p) => p.title).join('; '));
     const stalled = (d.plans || []).filter((p) => p.status === 'active' && p.updatedAt && (Date.now() - new Date(p.updatedAt).getTime()) > 14 * 86400 * 1000);
@@ -64,7 +91,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || 'gpt-5.5',
         max_completion_tokens: 3000,
-        messages: [{ role: 'system', content: SYS }, { role: 'user', content: 'Context:\n' + ctx.join('\n\n') }],
+        messages: [{ role: 'system', content: SYS }, { role: 'user', content: 'Context:\n' + [...meta, ...ctx].join('\n\n') }],
       }),
     });
     const j = await r.json();
@@ -75,11 +102,15 @@ export default async function handler(req, res) {
     if (!Array.isArray(gen)) gen = [];
 
     const fresh = [];
+    const taken = existing.map((p) => ({ title: p.title, act: p.act })); // already in the inbox
     for (const g of gen) {
       const key = norm(g.title);
       if (!key || dismissed.has(key) || existingKeys.has(key)) continue;
+      if (taken.some((t) => similar(t, g))) continue; // paraphrase of an existing/accepted one
+      if (Array.from(dismissed).some((k) => contain(k, g.title) >= 0.5)) continue; // paraphrase of a dismissed one
       const pk = PILLAR[g.pk] ? g.pk : 'purpose';
       existingKeys.add(key);
+      taken.push({ title: g.title, act: g.act });
       fresh.push({
         id: 'p' + Date.now() + '_' + fresh.length,
         pk, kind: g.kind === 'signal' ? 'signal' : '',
@@ -92,9 +123,18 @@ export default async function handler(req, res) {
       });
     }
 
-    const merged = [...fresh, ...existing].slice(0, 12);
-    await ref.set({ proposals: merged }, { merge: true });
-    return res.status(200).json({ ok: true, added: fresh.length, total: merged.length, titles: fresh.map((p) => p.title) });
+    // Merge + one-time cleanup: drop paraphrase-duplicates already sitting in the
+    // inbox (keep the newest = first occurrence) and expire proposals >21 days old.
+    const cutoff = Date.now() - 21 * 86400 * 1000;
+    const merged = [];
+    for (const p of [...fresh, ...existing]) {
+      if (p.at && new Date(p.at).getTime() < cutoff) continue;
+      if (merged.some((q) => similar(q, p))) continue;
+      merged.push(p);
+    }
+    const capped = merged.slice(0, 12);
+    await ref.set({ proposals: capped }, { merge: true });
+    return res.status(200).json({ ok: true, added: fresh.length, pruned: fresh.length + existing.length - capped.length, total: capped.length, titles: fresh.map((p) => p.title) });
   } catch (e) {
     console.error('cron-proposals', e);
     return res.status(500).json({ error: e.message });
