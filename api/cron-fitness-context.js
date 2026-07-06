@@ -1,7 +1,10 @@
 // Vercel Cron: curate a short fitness summary from mikesfitness and write it to
 // lifeos/{uid}.fitnessContext so Rupert's brief/brain knows Mike's training without
-// guessing. Cloud port of rupert/notify/sync-fitness-context.mjs so the brief no
-// longer depends on the Mac mini being awake.
+// guessing. REWRITTEN 2026-07-06 for the Build-15 training engine: reads the NEW
+// fitnessSessions + fitnessPlans collections and dailyMetrics (Apple Health).
+// The old mikesfitness/mike-health arrays (exerciseLog/runEntries/vo2Entries)
+// went stale after the 07-01 overhaul — Rupert was citing an April run and a
+// VO2max of 38.6 while the app showed 46.4.
 //
 // Reads:  mikesfitness (Firebase project trip-planner-5cc84) via FIREBASE_SA_FITNESS
 // Writes: mikeslife    (mikeslife-963c6) via FIREBASE_SERVICE_ACCOUNT (default app)
@@ -10,10 +13,16 @@ import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 const OWNER_UID = process.env.OWNER_UID || 'F8QJ8dCk0CV5yX7yHu7AHPd6QS32';
-const arr = (x) => (Array.isArray(x) ? x : []);
-const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
-const byDateDesc = (a, b) => String(b.date || b.createdAt || '').localeCompare(String(a.date || a.createdAt || ''));
-const recent = (list, n = 6) => arr(list).slice().sort(byDateDesc).slice(0, n);
+const ymd = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const addDays = (dateStr, n) => { const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+// newest dailyMetrics value at a dotted path, e.g. 'fitness.vo2max'
+const latest = (dm, path) => {
+  for (const [date, m] of Object.entries(dm).sort((a, b) => (a[0] < b[0] ? 1 : -1))) {
+    let v = m; for (const k of path.split('.')) v = v?.[k];
+    if (typeof v === 'number') return { date, v };
+  }
+  return null;
+};
 
 export default async function handler(req, res) {
   if (process.env.CRON_SECRET && req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -28,55 +37,64 @@ export default async function handler(req, res) {
     const fitDb = getFirestore(fitApp);
     const lifeDb = getFirestore();
 
-    const snap = await fitDb.doc('mikesfitness/mike-health').get();
-    if (!snap.exists) return res.status(200).json({ ok: false, error: 'mikesfitness/mike-health not found' });
-    const h = snap.data();
+    const today = ymd(new Date());
+    const dow = new Date(today + 'T12:00:00').getDay(); // 0 Sun..6 Sat
+    const weekStart = addDays(today, -((dow + 6) % 7)); // Monday
     const lines = [];
 
-    // recent workouts — both sources are date-keyed OBJECTS, not arrays.
-    const byDate = new Map();
-    const addWorkout = (date, label) => {
-      if (!date || !label) return;
-      if (!byDate.has(date)) byDate.set(date, new Set());
-      byDate.get(date).add(label);
-    };
-    for (const [date, items] of Object.entries(obj(h.exerciseLog))) {
-      for (const wk of arr(items)) addWorkout(date, wk.exerciseName || wk.type || wk.name);
+    // ---- Logged sessions (Build-15 engine), last 14 days ----
+    const sessSnap = await fitDb.collection('fitnessSessions').where('date', '>=', addDays(today, -14)).get();
+    const sessions = sessSnap.docs.map((d) => d.data()).sort((a, b) => (a.date < b.date ? 1 : -1));
+    if (sessions.length) {
+      lines.push('Recent sessions (14d): ' + sessions.slice(0, 8).map((s) => {
+        const bits = [s.date, s.title || s.type].filter(Boolean).join(' ');
+        const extra = [
+          s.durationMin && `${s.durationMin}min`,
+          s.distance && `${s.distance}${s.type === 'swim' ? 'm' : 'mi'}`,
+        ].filter(Boolean).join(', ');
+        return bits + (extra ? ` (${extra})` : '');
+      }).join(' | '));
+      const prs = sessions.flatMap((s) => (s.prs || []).map((p) => `${p.name} ${p.weight}x${p.reps} (${s.date})`));
+      if (prs.length) lines.push('Recent PRs: ' + prs.slice(0, 5).join(', '));
     }
-    for (const days of Object.values(obj(h.workoutDetails))) {
-      for (const items of Object.values(obj(days))) {
-        for (const wk of arr(items)) {
-          const date = wk.date || (wk.id ? new Date(wk.id).toISOString().slice(0, 10) : null);
-          addWorkout(date, wk.type || wk.name);
-        }
-      }
+
+    // ---- This week's plan ----
+    const plan = (await fitDb.doc(`fitnessPlans/${weekStart}`).get()).data();
+    if (plan && Array.isArray(plan.days) && plan.days.length) {
+      const t = plan.days.find((d) => d.date === today);
+      if (t) lines.push(`Today's planned session: ${t.title || t.type} [${t.status || 'planned'}]`);
+      const done = plan.days.filter((d) => d.status === 'done').length;
+      lines.push(`Week plan (Mon ${weekStart}, ${done}/${plan.days.length} done): `
+        + plan.days.map((d) => `${String(d.date || '').slice(5)} ${d.title || d.type}${d.status === 'done' ? ' ✓' : ''}`).join(', '));
     }
-    // Apple Watch days from dailyMetrics (≥20 exercise min) — Mike often skips manual logging.
-    try {
-      const dmSnap = await fitDb.collection('dailyMetrics').orderBy('date', 'desc').limit(10).get();
-      for (const dm of dmSnap.docs) {
-        const m = dm.data() || {};
-        const mins = m.activity?.exerciseMinutes || 0;
-        if (mins >= 20) addWorkout(dm.id, m.activity?.swimDistanceMeters > 0 ? `swim (Watch, ${Math.round(mins)}m)` : `Watch workout (${Math.round(mins)}m)`);
-      }
-    } catch (e) { console.warn('dailyMetrics read failed:', e.message); }
 
-    const workouts = [...byDate.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6)
-      .map(([date, set]) => `${date}: ${[...set].join(', ')}`);
-    if (workouts.length) lines.push('Recent workouts: ' + workouts.join(' | '));
+    // ---- Apple Health dailyMetrics: body + recovery + Watch-only workout days ----
+    const dmSnap = await fitDb.collection('dailyMetrics').where('date', '>=', addDays(today, -30)).get();
+    const dm = {}; dmSnap.docs.forEach((d) => { dm[d.id] = d.data(); });
+    const vo2 = latest(dm, 'fitness.vo2max');
+    if (vo2) lines.push(`Latest VO2max: ${vo2.v} (${vo2.date})`);
+    const wt = latest(dm, 'vitals.weightLbs');
+    if (wt) lines.push(`Latest weight: ${Math.round(wt.v * 10) / 10} lb (${wt.date})`);
+    const rhr = latest(dm, 'vitals.heartRateRest');
+    const hrv = latest(dm, 'vitals.hrv');
+    if (rhr || hrv) lines.push(`Recovery: RHR ${rhr ? Math.round(rhr.v) : '?'}${hrv ? `, HRV ${Math.round(hrv.v)}` : ''} (${(rhr || hrv).date})`);
+    const logged = new Set(sessions.map((s) => s.date));
+    const watch = Object.entries(dm)
+      .filter(([date, m]) => !logged.has(date) && (m.activity?.exerciseMinutes || 0) >= 20)
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 5)
+      .map(([date, m]) => `${date} (${Math.round(m.activity.exerciseMinutes)}min${m.activity?.swimDistanceMeters > 0 ? ', swim' : ''})`);
+    if (watch.length) lines.push('Watch-only workout days (not logged in app): ' + watch.join(', '));
 
-    const runs = recent(h.runEntries, 3).map((r) => `${r.date || '?'} ${r.distance || r.miles || ''}${r.distance ? 'mi' : ''}`);
-    if (runs.length) lines.push('Recent runs: ' + runs.join(', '));
-    const w = recent(h.weightEntries, 1)[0];
-    if (w) lines.push(`Latest weight: ${w.weight ?? w.value ?? '?'} (${w.date || '?'})`);
-    const vo2 = recent(h.vo2Entries, 1)[0];
-    if (vo2) lines.push(`Latest VO2max: ${vo2.vo2max ?? vo2.vo2 ?? vo2.value ?? '?'} (${vo2.date || '?'})`);
-    const plan = arr(h.trainingPlans).find((p) => p.active) || arr(h.trainingPlans)[0];
-    if (plan) lines.push(`Current plan: ${plan.name || plan.title || 'unnamed'}`);
+    // ---- Legacy fallback: only if the new engine has nothing at all ----
+    if (!sessions.length && !plan) {
+      const h = (await fitDb.doc('mikesfitness/mike-health').get()).data() || {};
+      const runs = (Array.isArray(h.runEntries) ? h.runEntries : []).slice(-3).map((r) => `${r.date || '?'} ${r.distance || r.miles || '?'}mi`);
+      if (runs.length) lines.push('Recent runs (LEGACY log, may be stale): ' + runs.join(', '));
+    }
 
     const fitnessContext = lines.join('\n') || 'No recent training data found.';
     await lifeDb.doc(`lifeos/${OWNER_UID}`).set({ fitnessContext, fitnessUpdatedAt: new Date().toISOString() }, { merge: true });
-    return res.status(200).json({ ok: true, lines: lines.length });
+    return res.status(200).json({ ok: true, lines: lines.length, preview: lines.slice(0, 3) });
   } catch (e) {
     console.error('cron-fitness-context', e);
     return res.status(500).json({ error: e.message });
