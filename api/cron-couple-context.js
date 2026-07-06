@@ -78,6 +78,7 @@ export default async function handler(req, res) {
           continue;
         }
         const runs = arr(week.runs);
+        if (runs.length === 0) continue; // leftover/degenerate weeks (e.g. old mikesfitness plans)
         const doneMike = runs.filter((r) => r.mike).length;
         const doneAdam = runs.filter((r) => r.adam).length;
         lines.push(`${ev?.name || planId} wk${week.weekNumber} (${week.totalMiles} mi): Mike ${doneMike}/${runs.length}, Adam ${doneAdam}/${runs.length} runs done.${week.weekNotes ? ` Note: ${week.weekNotes}` : ''}`);
