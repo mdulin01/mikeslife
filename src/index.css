@@ -53,16 +53,25 @@ nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
 .tab:hover{color:var(--txt)}
 .tab.active{background:linear-gradient(135deg,var(--teal),var(--emerald));color:#04201c;border-color:transparent}
 
-/* desktop: functional nav is a left sidebar; mobile reverts to a horizontal scroll row */
-.layout{display:flex;gap:20px;align-items:flex-start}
-.sidenav{flex:0 0 168px;flex-direction:column;gap:4px;position:sticky;top:14px;margin-bottom:0;overflow:visible}
-.sidenav .tab{width:100%;text-align:left;flex:0 0 auto}
-.content{flex:1;min-width:0}
+/* one nav, two skins: top bar on desktop, floating dock on mobile */
+.layout{display:block}
+.content{min-width:0}
+.topnav{display:flex;gap:6px;margin-bottom:16px}
+.topnav .tab{flex:0 0 auto;font-size:14px;padding:9px 16px}
 @media(max-width:760px){
-  .layout{display:block}
-  .sidenav{display:none}
+  .topnav{display:none}
   .content{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 }
+
+/* Hub page — everything-else grid */
+.hubgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:480px){.hubgrid{grid-template-columns:1fr}}
+.hubitem{display:flex;align-items:center;gap:12px;text-align:left;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:14px 16px;cursor:pointer;color:var(--txt);font-family:inherit;transition:.15s}
+.hubitem:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.22)}
+.hubitem .hi{font-size:24px;flex:0 0 auto}
+.hubitem .ht{display:block;font-size:14px;font-weight:700}
+.hubitem .hs{display:block;font-size:12px;color:var(--dim);margin-top:2px}
 /* floating dock (mobile) — translucent pill, spectrum indicator */
 .dock{display:none}
 @media(max-width:760px){
@@ -77,8 +86,6 @@ nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
     background:linear-gradient(90deg,#e40303,#ff8c00,#ffd700,#008026,#3b82f6,#732982)}
   .dock-badge{position:absolute;top:0;right:2px;background:var(--teal);color:#04201c;font-size:8.5px;font-weight:800;border-radius:999px;padding:0 4px;line-height:1.5}
 }
-.more-sheet{position:fixed;left:50%;transform:translateX(-50%) translateY(calc(-1 * var(--vvb,0px)));bottom:78px;z-index:91;background:rgba(16,24,39,.97);backdrop-filter:blur(16px);
-  border:1px solid var(--line);border-radius:16px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;box-shadow:0 18px 50px rgba(0,0,0,.6)}
 
 /* check-in candidate chip + its delete-for-good ✕ */
 .candwrap{display:inline-flex;align-items:stretch;gap:0}

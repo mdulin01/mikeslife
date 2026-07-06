@@ -15,10 +15,19 @@ import {
   WEEK_DAYS, WEEK_EVENTS, MAILS, CODING_UPDATES,
 } from './seed';
 
-const TABS = [
-  ['home', 'Home'], ['inbox', 'Inbox'], ['planning', 'Planning'],
-  ['calendar', 'Calendar'], ['email', 'Email'], ['people', 'People'], ['memories', 'Memories'], ['patterns', 'Patterns'], ['vault', 'Vault'],
+// One nav, two skins: these four live in the bottom dock (mobile) and the top bar
+// (desktop). Everything else lives inside the Hub page — no more side menu or More sheet.
+const PRIMARY_TABS = [
+  ['home', '🏠', 'Home'], ['planning', '🗺️', 'Plans'], ['hub', '🧭', 'Hub'], ['vault', '🚨', 'Vault'],
 ];
+const HUB_ITEMS = [
+  ['inbox', '📥', 'Inbox', 'Coach proposals + signals to triage'],
+  ['calendar', '🗓️', 'Calendar', 'Your week, color-coded by pillar'],
+  ['people', '👥', 'People', 'Personal · professional · opportunities'],
+  ['email', '✉️', 'Email', 'Signals from your allow-listed lanes'],
+  ['memories', '📸', 'Memories', 'Moments & notes worth keeping'],
+];
+const HUB_CHILDREN = new Set(HUB_ITEMS.map(([id]) => id));
 
 
 // Mike is US Eastern — NEVER use toISOString() for "today" (it's UTC; after ~8pm ET
@@ -871,11 +880,63 @@ function Plans({ plans }) {
   );
 }
 
-function PersonRow({ p, onDelete }) {
+const PERSON_TAGS = ['', 'son', 'partner', 'family', 'friend', 'colleague', 'recruiter', 'mentor', 'doctor', 'other'];
+
+// Birthday helper: days until the next occurrence of an MM-DD (or YYYY-MM-DD) date.
+const daysToBirthday = (bd) => {
+  const m = String(bd || '').match(/(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: EASTERN }));
+  let next = new Date(now.getFullYear(), +m[1] - 1, +m[2]);
+  if (next < new Date(now.getFullYear(), now.getMonth(), now.getDate())) next = new Date(now.getFullYear() + 1, +m[1] - 1, +m[2]);
+  return Math.round((next - now) / 86400000);
+};
+
+function PersonEditor({ p, group, groups, onSave, onCancel }) {
+  const [f, setF] = useState({ name: p.name || '', tag: p.tag || '', meta: p.meta || '', phone: p.phone || '', email: p.email || '', birthday: p.birthday || '', group });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const inp = { background: 'var(--panel2)', color: 'var(--txt)', border: '1px solid var(--line)', borderRadius: 8, padding: '7px 9px', fontSize: 13, boxSizing: 'border-box' };
   return (
-    <div className="person"><div><div className="pn">{p.name}</div><div className="pm">{p.meta}</div></div>
-      <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+    <div style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <input style={{ ...inp, flex: '2 1 140px' }} placeholder="Name" value={f.name} onChange={set('name')} autoFocus />
+        <select style={{ ...inp, flex: '1 1 90px' }} value={f.tag} onChange={set('tag')}>
+          {PERSON_TAGS.map((t) => <option key={t} value={t}>{t || 'tag…'}</option>)}
+        </select>
+        <select style={{ ...inp, flex: '1 1 110px' }} value={f.group} onChange={set('group')}>
+          {groups.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+      </div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+        <input style={{ ...inp, flex: '1 1 120px' }} placeholder="Phone" value={f.phone} onChange={set('phone')} />
+        <input style={{ ...inp, flex: '1 1 150px' }} placeholder="Email" value={f.email} onChange={set('email')} />
+        <input type="date" style={{ ...inp, flex: '0 1 140px', color: f.birthday ? 'var(--txt)' : 'var(--mut)' }} title="Birthday" value={f.birthday} onChange={set('birthday')} />
+      </div>
+      <input style={{ ...inp, width: '100%', marginTop: 6 }} placeholder="Note (role, how you know them…)" value={f.meta} onChange={set('meta')} />
+      <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+        <button className="btn def" style={{ fontSize: 12 }} onClick={onCancel}>Cancel</button>
+        <button className="btn app" style={{ fontSize: 12 }} onClick={() => { if (f.name.trim()) onSave({ ...f, name: f.name.trim() }); }}>Save</button>
+      </div>
+    </div>
+  );
+}
+
+function PersonRow({ p, onDelete, onEdit }) {
+  const bd = daysToBirthday(p.birthday);
+  const contact = [p.phone, p.email].filter(Boolean).join(' · ');
+  return (
+    <div className="person" style={onEdit ? { cursor: 'pointer' } : {}}>
+      <div style={{ minWidth: 0, flex: 1 }} onClick={onEdit || undefined} title={onEdit ? 'Tap to edit' : undefined}>
+        <div className="pn">{p.name}
+          {p.tag && <span className="pill" style={{ background: 'rgba(148,163,184,.14)', color: 'var(--mut)', marginLeft: 6, fontSize: 10 }}>{p.tag}</span>}
+          {bd != null && bd <= 30 && <span className="pill" style={{ background: 'rgba(244,114,182,.15)', color: 'var(--rose)', marginLeft: 6, fontSize: 10 }}>🎂 {bd === 0 ? 'today!' : `in ${bd}d`}</span>}
+        </div>
+        {p.meta && <div className="pm">{p.meta}</div>}
+        {contact && <div className="pm" style={{ opacity: .75 }}>{contact}</div>}
+      </div>
+      <div className="row" style={{ alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
         {p.action && <span className="pa">{p.action}</span>}
+        {onEdit && <button className="trash" title="Edit" onClick={onEdit} style={{ fontSize: 13 }}>✏️</button>}
         {onDelete && <button className="trash" title="Remove" onClick={() => onDelete(p.id)}><Trash2 size={15} /></button>}
       </div></div>
   );
@@ -893,9 +954,9 @@ function parseVCards(text) {
     const org = grab(/\nORG[^:\n]*:(.+)/i).replace(/;+$/, '').replace(/;/g, ' ');
     const email = grab(/\nEMAIL[^:\n]*:(.+)/i);
     const tel = grab(/\nTEL[^:\n]*:(.+)/i);
+    const bday = grab(/\nBDAY[^:\n]*:(.+)/i).replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
     const role = [title, org].filter(Boolean).join(' · ');
-    const contact = [email, tel].filter(Boolean).join(' · ');
-    out.push({ name, meta: [role, contact].filter(Boolean).join(' — ') });
+    out.push({ name, meta: role, email, phone: tel, birthday: /^\d{4}-\d{2}-\d{2}/.test(bday) ? bday.slice(0, 10) : '' });
   }
   return out;
 }
@@ -917,11 +978,20 @@ function AddPerson({ groups, defaultGroup, onAdd }) {
   );
 }
 
-function People({ people, addPerson, deletePerson, addPeople }) {
+function People({ people, addPerson, deletePerson, addPeople, updatePerson }) {
   const fileRef = useRef(null);
   const [imported, setImported] = useState('');
+  const [editing, setEditing] = useState(null); // { group, id }
   const live = !!addPerson;
   const GROUPS = [['personal', 'Personal'], ['professional', 'Professional'], ['opportunities', 'Opportunities']];
+
+  const renderPerson = (group) => (p) => editing && editing.group === group && editing.id === p.id
+    ? <PersonEditor key={p.id} p={p} group={group} groups={GROUPS}
+        onCancel={() => setEditing(null)}
+        onSave={(f) => { updatePerson(group, p.id, f); setEditing(null); }} />
+    : <PersonRow key={p.id} p={p}
+        onEdit={live && updatePerson ? () => setEditing({ group, id: p.id }) : null}
+        onDelete={live ? (id) => deletePerson(group, id) : null} />;
 
   const onFile = async (e) => {
     const f = e.target.files && e.target.files[0];
@@ -947,13 +1017,13 @@ function People({ people, addPerson, deletePerson, addPeople }) {
           <p className="banner" style={{ marginTop: 10, textAlign: 'left' }}>iPhone: open Contacts → pick a person (or select multiple) → <b>Share Contact</b> → Save to Files / AirDrop the <code>.vcf</code>, then import it here. (Browsers can't read your phone's address book directly — this is the privacy-safe way in.)</p>
         </div>
       )}
-      <div className="card"><div className="subhead">Personal</div>{people.personal.map((p) => <PersonRow key={p.id} p={p} onDelete={live ? (id) => deletePerson('personal', id) : null} />)}</div>
-      <div className="card"><div className="subhead">Professional network</div>{people.professional.map((p) => <PersonRow key={p.id} p={p} onDelete={live ? (id) => deletePerson('professional', id) : null} />)}
+      <div className="card"><div className="subhead">Personal</div>{people.personal.map(renderPerson('personal'))}</div>
+      <div className="card"><div className="subhead">Professional network</div>{people.professional.map(renderPerson('professional'))}
         <div className="person"><div><div className="pn">+ from your email</div><div className="pm">Rupert surfaces contacts you've gone quiet on</div></div><span className="pa">review</span></div>
       </div>
       <div className="card"><div className="subhead">🎯 Job opportunities &amp; next gig <span className="dim" style={{ textTransform: 'none', fontWeight: 500 }}>· powered by mikedulinmd.app</span></div>
-        {people.opportunities.map((p) => <PersonRow key={p.id} p={p} onDelete={live ? (id) => deletePerson('opportunities', id) : null} />)}</div>
-      <p className="banner">Relationships split into personal + professional. Rupert watches email for follow-ups, quiet contacts, and inbound opportunities.</p>
+        {people.opportunities.map(renderPerson('opportunities'))}</div>
+      <p className="banner">Tap anyone to edit their name, tag, contact info, or move them between groups. Rupert watches email for follow-ups, quiet contacts, and inbound opportunities.</p>
     </section>
   );
 }
@@ -1128,6 +1198,42 @@ function FocusView({ focus, data, openRupert, onOpenApp }) {
   );
 }
 
+// ───────────────────────── Hub ─────────────────────────
+// The one place everything lives: the five pillars (status + tap to drill in)
+// and every secondary area. Replaces the old side menu / More sheet / top tiles.
+function HubView({ counts, proposals, openPillar, goTab }) {
+  return (
+    <section>
+      <div className="section-title">🧭 Hub <span className="dim" style={{ fontWeight: 500 }}>· your five pillars + everything else</span></div>
+      <div className="hero" style={{ marginBottom: 14 }}>
+        {Object.entries(PILLARS).map(([k, p]) => {
+          const c = `var(${COL[k]})`;
+          const need = counts[k];
+          return (
+            <div className="ptile" style={{ '--c': c }} key={k} onClick={() => openPillar(k)}>
+              {need > 0 ? <div className="badge" style={{ '--c': c }}>{need}</div> : <div className="okdot" />}
+              <div className="em">{p.em}</div>
+              <div className="pnm">{p.name}</div>
+              <div className="pst">{need > 0 ? `${need} need${need > 1 ? '' : 's'} you` : 'on track'}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="hubgrid">
+        {HUB_ITEMS.map(([id, ic, label, sub]) => (
+          <button key={id} className="hubitem" onClick={() => goTab(id)}>
+            <span className="hi">{ic}</span>
+            <span style={{ minWidth: 0 }}>
+              <span className="ht">{label}{id === 'inbox' && proposals > 0 && <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{proposals}</span>}</span>
+              <span className="hs">{sub}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // ───────────────────────── App ─────────────────────────
 function CommitmentsCard({ value, onSave }) {
   const DEFAULT = 'In Charlotte working at Rea Farms every Wed & Thu — no evening plans those nights.';
@@ -1283,54 +1389,6 @@ function QuickCapture({ captures, addCapture, deleteCapture, addTodayItem }) {
   );
 }
 
-function Spark({ series, color = 'var(--teal)', max = 10 }) {
-  const pts = series.filter((p) => p.v != null);
-  if (pts.length < 2) return <div className="dim" style={{ fontSize: 12 }}>Not enough check-ins yet.</div>;
-  const w = 280, h = 46;
-  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${(i / (pts.length - 1) * w).toFixed(1)} ${(h - (p.v / max) * h).toFixed(1)}`).join(' ');
-  return <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 46 }} preserveAspectRatio="none"><path d={d} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function PatternsView({ data }) {
-  const hist = (data.checkinHistory || []).slice(-30);
-  const avg = (k) => { const v = hist.map((c) => c[k]).filter((x) => x != null); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : '—'; };
-  const gt = data.goodTime || [];
-  // Most energizing activities from the Good Time Journal (energy+engagement).
-  const byAct = {};
-  for (const g of gt) { const k = (g.activity || '').trim(); if (!k) continue; (byAct[k] = byAct[k] || []).push((Number(g.energy) || 0) + (Number(g.engagement) || 0)); }
-  const top = Object.entries(byAct).map(([a, arr]) => ({ a, s: arr.reduce((x, y) => x + y, 0) / arr.length, n: arr.length }))
-    .sort((x, y) => y.s - x.s).slice(0, 5);
-  const METRICS = [['energy', '⚡ Energy', 'var(--amber)'], ['mood', '🙂 Mood', 'var(--teal)'], ['capacity', '🎚️ Capacity', 'var(--emerald)']];
-  return (
-    <section>
-      <div className="section-title">📈 Patterns <span className="dim" style={{ fontWeight: 500 }}>· how you're trending</span></div>
-      {hist.length < 2 && <p className="banner">Patterns build as you check in each morning (energy / mood / capacity). Keep checking in and trends + correlations fill in here.</p>}
-      {METRICS.map(([k, label, color]) => (
-        <div className="card" key={k} style={{ marginBottom: 10 }}>
-          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>{label}</span>
-            <span className="dim" style={{ fontSize: 13 }}>avg {avg(k)}/10 · {hist.length} check-ins</span>
-          </div>
-          <Spark series={hist.map((c) => ({ v: c[k] }))} color={color} />
-        </div>
-      ))}
-      {top.length > 0 && (
-        <div className="card">
-          <h3>What energizes you most</h3>
-          <p className="dim" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>From your Good Time Journal (energy + engagement).</p>
-          {top.map((t) => (
-            <div className="row" key={t.a} style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--line)' }}>
-              <span style={{ fontSize: 13 }}>{t.a}</span>
-              <span className="dim" style={{ fontSize: 12 }}>{t.s.toFixed(1)}/10 · {t.n}×</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <p className="banner">Coming as data accrues: workout-vs-mood and spend-vs-mood correlations (needs the fitness + finance daily series Rupert is now syncing).</p>
-    </section>
-  );
-}
-
 export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(!FIREBASE_READY);
@@ -1345,7 +1403,6 @@ export default function App() {
   const [pillar, setPillar] = useState(null);
   const [notif, setNotif] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
   const [rupertOpen, setRupertOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rupertSeed, setRupertSeed] = useState('');
   const [peacockPop, setPeacockPop] = useState(false);
@@ -1359,7 +1416,7 @@ export default function App() {
     activatePlan, setPlanStatus, toggleTask, setTaskNote, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument, setEmergency,
-    addPerson, deletePerson, addPeople,
+    addPerson, deletePerson, addPeople, updatePerson,
     setLocation, setFcmToken, setCommitments, setVaultDocs,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem, dismissTask,
@@ -1541,30 +1598,16 @@ export default function App() {
         </div>
       </div>
 
-      <div className="hero">
-        {Object.entries(PILLARS).map(([k, p]) => {
-          const c = `var(${COL[k]})`;
-          const need = counts[k];
-          return (
-            <div className={'ptile' + (pillar === k ? ' sel' : '')} style={{ '--c': c }} key={k} onClick={() => openPillar(k)}>
-              {need > 0 ? <div className="badge" style={{ '--c': c }}>{need}</div> : <div className="okdot" />}
-              <div className="em">{p.em}</div>
-              <div className="pnm">{p.name}</div>
-              <div className="pst">{need > 0 ? `${need} need${need > 1 ? '' : 's'} you` : 'on track'}</div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="layout">
-      <nav className="sidenav">
-        {TABS.map(([id, label]) => (
-          <button className={'tab' + (!pillar && tab === id ? ' active' : '')} key={id} onClick={() => goTab(id)}>
-            {label}{id === 'inbox' ? <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{data.proposals.length}</span> : null}
+      {/* Desktop top bar — same four items as the mobile dock */}
+      <nav className="topnav">
+        {PRIMARY_TABS.map(([id, ic, label]) => (
+          <button className={'tab' + (!pillar && (tab === id || (id === 'hub' && HUB_CHILDREN.has(tab))) ? ' active' : '')} key={id} onClick={() => goTab(id)}>
+            {ic} {label}{id === 'hub' && data.proposals.length > 0 ? <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{data.proposals.length}</span> : null}
           </button>
         ))}
       </nav>
 
+      <div className="layout">
       <main className="content" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
 
       {FIREBASE_READY && (
@@ -1602,7 +1645,7 @@ export default function App() {
       ) : alertsOpen ? (
         <AlertsView alerts={data.alerts || []} onOpen={setOpenAlertId} onBack={() => setAlertsOpen(null)} autoFocusSearch={alertsOpen === 'search'} prefs={data.alertPrefs} setPref={setAlertPref} />
       ) : pillar ? (
-        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('home')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
+        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('hub')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
       ) : (
         <>
           {tab === 'home' && (
@@ -1617,6 +1660,8 @@ export default function App() {
               )}
             </>
           )}
+          {tab === 'hub' && <HubView counts={counts} proposals={data.proposals.length} openPillar={openPillar} goTab={goTab} />}
+          {HUB_CHILDREN.has(tab) && <button className="backbtn" onClick={() => goTab('hub')}>‹ hub</button>}
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
           {tab === 'calendar' && <Calendar data={data} />}
           {tab === 'email' && <Email data={data} />}
@@ -1636,10 +1681,9 @@ export default function App() {
               removeMindBranch={removeMindBranch}
             />
           )}
-          {tab === 'people' && <People people={data.people} addPerson={addPerson} deletePerson={deletePerson} addPeople={addPeople} />}
+          {tab === 'people' && <People people={data.people} addPerson={addPerson} deletePerson={deletePerson} addPeople={addPeople} updatePerson={updatePerson} />}
           {tab === 'memories' && <MemoriesView data={data} addMemory={addMemory} deleteMemory={deleteMemory} addDocument={addDocument} deleteDocument={deleteDocument} />}
-          {tab === 'patterns' && <PatternsView data={data} />}
-          {tab === 'vault' && <VaultView data={data} setEmergency={setEmergency} setVaultDocs={setVaultDocs} user={user} />}
+          {tab === 'vault' && <VaultView data={data} setEmergency={setEmergency} setVaultDocs={setVaultDocs} user={user} people={data.people} />}
         </>
       )}
 
@@ -1651,25 +1695,15 @@ export default function App() {
       {/* Fixed overlays live OUTSIDE the scrolling <main> so iOS anchors them to the
           viewport rather than a scrolled/animated ancestor — this is what kept the
           floating dock from drifting up the screen on the brief/focus views. */}
-      {/* Mobile floating dock — 4 primary + More sheet (peacock lives in the header) */}
-      {moreOpen && (
-        <div className="more-sheet" onClick={() => setMoreOpen(false)}>
-          {[['inbox', '📥 Inbox'], ['email', '✉️ Email'], ['memories', '📸 Memories'], ['patterns', '📈 Patterns'], ['vault', '🚨 Vault']].map(([id, label]) => (
-            <button key={id} className={'tab' + (!pillar && tab === id ? ' active' : '')} onClick={() => { goTab(id); setMoreOpen(false); }}>{label}</button>
-          ))}
-        </div>
-      )}
+      {/* Mobile floating dock — same four items as the desktop top bar (peacock lives in the header) */}
       <div className="dock">
-        {[['home', '🏠', 'Home'], ['planning', '🗺️', 'Plans'], ['calendar', '🗓️', 'Calendar'], ['people', '👥', 'People']].map(([id, ic, lb]) => (
-          <button key={id} className={'dock-item' + (!pillar && !moreOpen && tab === id ? ' active' : '')}
-            onClick={() => { goTab(id); setMoreOpen(false); }}>
+        {PRIMARY_TABS.map(([id, ic, lb]) => (
+          <button key={id} className={'dock-item' + (!pillar && (tab === id || (id === 'hub' && HUB_CHILDREN.has(tab))) ? ' active' : '')}
+            onClick={() => goTab(id)}>
             <span className="di">{ic}</span>{lb}
-            {id === 'home' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}
+            {id === 'hub' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}
           </button>
         ))}
-        <button className={'dock-item' + (moreOpen || ['inbox', 'email', 'memories', 'patterns', 'vault'].includes(tab) ? ' active' : '')} onClick={() => setMoreOpen(!moreOpen)}>
-          <span className="di">⋯</span>More
-        </button>
       </div>
 
       {rupertOpen && (

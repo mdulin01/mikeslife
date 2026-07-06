@@ -261,7 +261,10 @@ export function useLifeData(user) {
     if (!name) return;
     mutate((p) => {
       const list = (p.people && p.people[group]) || [];
-      return { ...p, people: { ...p.people, [group]: [{ id: 'pp' + Date.now(), name, meta: (person.meta || '').trim(), action: person.action || '' }, ...list] } };
+      return { ...p, people: { ...p.people, [group]: [{
+        id: 'pp' + Date.now(), name, meta: (person.meta || '').trim(), action: person.action || '',
+        tag: person.tag || '', phone: person.phone || '', email: person.email || '', birthday: person.birthday || '',
+      }, ...list] } };
     }, ['people']);
   }, [mutate]);
 
@@ -269,12 +272,36 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, people: { ...p.people, [group]: ((p.people && p.people[group]) || []).filter((x) => x.id !== id) } }), ['people']);
   }, [mutate]);
 
+  // Edit a person in place. `patch` may include a new `group` — if it differs,
+  // the person moves lists (keeps id + unspecified fields).
+  const updatePerson = useCallback((group, id, patch) => {
+    mutate((p) => {
+      const people = { ...(p.people || {}) };
+      const list = people[group] || [];
+      const cur = list.find((x) => x.id === id);
+      if (!cur) return p;
+      const next = { ...cur, ...patch };
+      delete next.group;
+      const target = patch.group && patch.group !== group ? patch.group : group;
+      if (target === group) {
+        people[group] = list.map((x) => (x.id === id ? next : x));
+      } else {
+        people[group] = list.filter((x) => x.id !== id);
+        people[target] = [next, ...(people[target] || [])];
+      }
+      return { ...p, people };
+    }, ['people']);
+  }, [mutate]);
+
   const addPeople = useCallback((group, persons) => {
     const clean = (persons || []).filter((x) => (x.name || '').trim());
     if (!clean.length) return;
     mutate((p) => {
       const list = (p.people && p.people[group]) || [];
-      const add = clean.map((x, i) => ({ id: 'pp' + Date.now() + '_' + i, name: x.name.trim(), meta: (x.meta || '').trim(), action: '' }));
+      const add = clean.map((x, i) => ({
+        id: 'pp' + Date.now() + '_' + i, name: x.name.trim(), meta: (x.meta || '').trim(), action: '',
+        tag: x.tag || '', phone: x.phone || '', email: x.email || '', birthday: x.birthday || '',
+      }));
       return { ...p, people: { ...p.people, [group]: [...add, ...list] } };
     }, ['people']);
   }, [mutate]);
@@ -425,7 +452,7 @@ export function useLifeData(user) {
     activatePlan, setPlanStatus, toggleTask, setTaskNote, addPlan, addTask,
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
-    addPerson, deletePerson, addPeople,
+    addPerson, deletePerson, addPeople, updatePerson,
     setLocation, setFcmToken, setCommitments, setEmergency, setVaultDocs,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem, dismissTask,

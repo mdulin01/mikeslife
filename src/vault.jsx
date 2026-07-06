@@ -111,6 +111,9 @@ function DocumentsSection({ user, docs, setVaultDocs }) {
                 <input type="date" value={d.expires || ''} onChange={(ev) => setExpires(d, ev.target.value)} title="Expiry / renewal date (optional)"
                   style={{ background: 'var(--panel2)', color: d.expires ? 'var(--txt)' : 'var(--dim, #888)', border: '1px solid var(--line)', borderRadius: 8, padding: '4px 6px', fontSize: 12 }} />
               </span>
+              <button className="btn def" title={d.critical ? 'Critical — listed on the emergency one-pager' : 'Mark critical (listed on the one-pager)'}
+                style={{ fontSize: 12, opacity: d.critical ? 1 : .5 }}
+                onClick={() => setVaultDocs(docs.map((x) => (x.id === d.id ? { ...x, critical: !x.critical } : x)))}>{d.critical ? '⭐' : '☆'}</button>
               <button className="btn def" style={{ fontSize: 12 }} onClick={() => del(d)}>✕</button>
             </div>
           );
@@ -140,7 +143,72 @@ const TEXTS = [
   ['whereThingsAre', 'Where things are (accounts, safe, key docs — NO passwords)', true],
 ];
 
-export default function VaultView({ data, setEmergency, setVaultDocs, user }) {
+// ── In case of emergency: who steps in, what they should know, last wishes. ──
+// Stored on lifeos.emergency (icePeople[], lastWishes) alongside the one-pager fields.
+function IceSection({ merged, draft, setDraft, setEmergency, people, saveText, commit, criticalDocs }) {
+  const icePeople = Array.isArray(merged.icePeople) ? merged.icePeople : [];
+  const everyone = ['personal', 'professional'].flatMap((g) => (people && people[g]) || []);
+  const addable = everyone.filter((p) => !icePeople.some((x) => x.personId === p.id));
+  const addFromPeople = (id) => {
+    const p = everyone.find((x) => x.id === id);
+    if (!p) return;
+    const next = { ...draft, icePeople: [...icePeople, { personId: p.id, name: p.name.replace(/^[^\w]+\s*/, ''), phone: p.phone || '', role: p.tag || '', note: '' }] };
+    setDraft(next); setEmergency(next);
+  };
+  const setIce = (i, k, v) => setDraft({ ...draft, icePeople: icePeople.map((r, j) => (j === i ? { ...r, [k]: v } : r)) });
+  const delIce = (i) => { const next = { ...draft, icePeople: icePeople.filter((_, j) => j !== i) }; setDraft(next); setEmergency(next); };
+  const inp = { background: 'var(--panel2)', color: 'var(--txt)', border: '1px solid var(--line)', borderRadius: 8, padding: '7px 9px', fontSize: 13, boxSizing: 'border-box' };
+  return (
+    <>
+      <div className="section-title" style={{ marginTop: 20 }}>🕊️ In case of emergency</div>
+      <p className="banner" style={{ marginTop: 0 }}>Who steps in, what each person needs to know, and your wishes — all included when you print the one-pager above.</p>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h3>👥 Designated people</h3>
+        {icePeople.map((r, i) => (
+          <div key={i} style={{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <input style={{ ...inp, flex: '1 1 120px' }} placeholder="Name" value={r.name || ''} onChange={(ev) => setIce(i, 'name', ev.target.value)} onBlur={commit} />
+              <input style={{ ...inp, flex: '1 1 110px' }} placeholder="Phone" value={r.phone || ''} onChange={(ev) => setIce(i, 'phone', ev.target.value)} onBlur={commit} />
+              <input style={{ ...inp, flex: '1 1 100px' }} placeholder="Role (partner, son…)" value={r.role || ''} onChange={(ev) => setIce(i, 'role', ev.target.value)} onBlur={commit} />
+              <button className="btn def" style={{ flex: '0 0 auto', fontSize: 12 }} onClick={() => delIce(i)}>✕</button>
+            </div>
+            <input style={{ ...inp, width: '100%', marginTop: 6 }} placeholder="What they should know / do (e.g. 'has the house key; call the lawyer — number in Estate docs')"
+              value={r.note || ''} onChange={(ev) => setIce(i, 'note', ev.target.value)} onBlur={commit} />
+          </div>
+        ))}
+        <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {addable.length > 0 && (
+            <select style={inp} value="" onChange={(ev) => { if (ev.target.value) addFromPeople(ev.target.value); ev.target.value = ''; }}>
+              <option value="">+ Add from People…</option>
+              {addable.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
+          <button className="btn def" style={{ fontSize: 12 }}
+            onClick={() => { const next = { ...draft, icePeople: [...icePeople, { name: '', phone: '', role: '', note: '' }] }; setDraft(next); setEmergency(next); }}>+ Add manually</button>
+        </div>
+      </div>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h3>🕊️ Last wishes</h3>
+        <p className="dim" style={{ fontSize: 12, marginTop: 2 }}>Funeral/memorial preferences, who to notify, what happens to the apps and accounts, anything you want said. Not a legal will — point to the real one in Estate docs.</p>
+        <textarea value={merged.lastWishes || ''} rows={5} onChange={(ev) => saveText('lastWishes', ev.target.value)} onBlur={commit}
+          style={{ width: '100%', boxSizing: 'border-box', background: 'var(--panel2)', color: 'var(--txt)', border: '1px solid var(--line)', borderRadius: 8, padding: 9, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+      </div>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <h3>⭐ Critical documents</h3>
+        {criticalDocs.length
+          ? criticalDocs.map((d) => (
+            <div key={d.id} className="row" style={{ gap: 8, padding: '4px 0', alignItems: 'center' }}>
+              <a href={d.url} target="_blank" rel="noreferrer" style={{ color: 'var(--txt)', fontSize: 13, textDecoration: 'none' }}>📄 {d.name}</a>
+              <span className="dim" style={{ fontSize: 12 }}>{d.category}</span>
+            </div>
+          ))
+          : <p className="dim" style={{ fontSize: 13, margin: 0 }}>Star (⭐) documents in the vault above — they'll be listed here and on the printout so people know which files matter.</p>}
+      </div>
+    </>
+  );
+}
+
+export default function VaultView({ data, setEmergency, setVaultDocs, user, people }) {
   const e = data.emergency || {};
   const [draft, setDraft] = useState(e);
   const merged = { ...e, ...draft };
@@ -163,6 +231,12 @@ export default function VaultView({ data, setEmergency, setVaultDocs, user }) {
       return sec(label, `<table><thead><tr>${cols.map(([, lbl]) => `<th>${lbl}</th>`).join('')}</tr></thead><tbody>${trs}</tbody></table>`);
     };
     const textHtml = TEXTS.filter(([k]) => merged[k]).map(([k, lbl]) => `<p><b>${lbl}:</b> ${esc(merged[k]).replace(/\n/g, '<br>')}</p>`).join('');
+    const ice = Array.isArray(merged.icePeople) ? merged.icePeople.filter((r) => (r.name || '').trim()) : [];
+    const iceHtml = ice.length ? sec('Designated people — who steps in', ice.map((r) =>
+      `<p><b>${esc(r.name)}</b>${r.role ? ` (${esc(r.role)})` : ''}${r.phone ? ` · ${esc(r.phone)}` : ''}${r.note ? `<br><span style="color:#444">${esc(r.note)}</span>` : ''}</p>`).join('')) : '';
+    const wishesHtml = merged.lastWishes ? sec('Last wishes', `<p>${esc(merged.lastWishes).replace(/\n/g, '<br>')}</p>`) : '';
+    const crit = (Array.isArray(data.vaultDocs) ? data.vaultDocs : []).filter((d) => d.critical);
+    const critHtml = crit.length ? sec('Critical documents (in the Mike’s Life vault)', `<ul>${crit.map((d) => `<li>${esc(d.name)} — ${esc(d.category)}</li>`).join('')}</ul>`) : '';
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Emergency One-Pager — Mike Dulin</title>
       <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:32px auto;color:#111;line-height:1.5}
       h1{font-size:22px;border-bottom:3px solid #111;padding-bottom:6px;margin-bottom:4px}
@@ -172,8 +246,11 @@ export default function VaultView({ data, setEmergency, setVaultDocs, user }) {
       p{font-size:14px;margin:5px 0}</style></head><body>
       <h1>🚨 Emergency One-Pager — Mike Dulin</h1>
       <div class="sub">Printed ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })} · keep current</div>
+      ${iceHtml}
       ${LISTS.map((l) => listHtml(l.key, l.label.replace(/^.. /, ''), l.cols)).join('')}
       ${sec('Medical & legal', textHtml)}
+      ${wishesHtml}
+      ${critHtml}
       </body></html>`;
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 350); }
@@ -218,6 +295,9 @@ export default function VaultView({ data, setEmergency, setVaultDocs, user }) {
           </div>
         ))}
       </div>
+
+      <IceSection merged={merged} draft={draft} setDraft={setDraft} setEmergency={setEmergency} people={people}
+        saveText={saveText} commit={commit} criticalDocs={(Array.isArray(data.vaultDocs) ? data.vaultDocs : []).filter((d) => d.critical)} />
     </section>
   );
 }
