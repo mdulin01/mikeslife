@@ -27,25 +27,31 @@ function DocumentsSection({ user, docs, setVaultDocs }) {
     .sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
 
   const onFile = async (ev) => {
-    const file = ev.target.files && ev.target.files[0];
+    const files = Array.from(ev.target.files || []);
     ev.target.value = '';
-    if (!file || !ready || busy) return;
-    if (file.size > MAX_MB * 1048576) { alert(`Max ${MAX_MB} MB per file.`); return; }
+    if (!files.length || !ready || busy) return;
+    const oversize = files.filter((f) => f.size > MAX_MB * 1048576);
+    if (oversize.length) { alert(`Max ${MAX_MB} MB per file — too big: ` + oversize.map((f) => f.name).join(', ')); return; }
     setBusy(true);
+    const added = [];
     try {
-      const id = 'v' + Date.now();
-      const path = `vault/${user.uid}/${id}-${file.name}`;
-      const r = sRef(storage, path);
-      await uploadBytes(r, file, { contentType: file.type || 'application/octet-stream' });
-      const url = await getDownloadURL(r);
-      setVaultDocs([{
-        id, name: file.name, path, url, category: upCat,
-        size: file.size, contentType: file.type || '',
-        uploadedAt: new Date().toISOString(), expires: '',
-      }, ...docs]);
+      for (const file of files) {
+        const id = 'v' + Date.now() + '_' + added.length;
+        const path = `vault/${user.uid}/${id}-${file.name}`;
+        const r = sRef(storage, path);
+        await uploadBytes(r, file, { contentType: file.type || 'application/octet-stream' });
+        const url = await getDownloadURL(r);
+        added.push({
+          id, name: file.name, path, url, category: upCat,
+          size: file.size, contentType: file.type || '',
+          uploadedAt: new Date().toISOString(), expires: '',
+        });
+      }
     } catch (e) {
-      alert('Upload failed: ' + (e.message || e.code || e));
-    } finally { setBusy(false); }
+      alert(`Upload failed after ${added.length}/${files.length} file(s): ` + (e.message || e.code || e));
+    }
+    if (added.length) setVaultDocs([...added, ...docs]);
+    setBusy(false);
   };
 
   const del = async (d) => {
@@ -66,7 +72,7 @@ function DocumentsSection({ user, docs, setVaultDocs }) {
         <span>📁 Documents</span>
         <label className="btn app" style={{ fontSize: 13, cursor: ready && !busy ? 'pointer' : 'not-allowed', opacity: ready ? 1 : 0.5 }}>
           {busy ? '⏳ Uploading…' : '📤 Add document'}
-          <input type="file" hidden disabled={!ready || busy} onChange={onFile} />
+          <input type="file" hidden multiple disabled={!ready || busy} onChange={onFile} />
         </label>
       </div>
       <p className="banner" style={{ marginTop: 0 }}>
