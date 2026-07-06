@@ -146,8 +146,11 @@ export default async function handler(req, res) {
 
         const fmtET = (d, opts) => new Date(d).toLocaleString('en-US', { timeZone: ET, ...opts });
         const now = new Date();
-        const horizonMs = new Date(Date.now() + 14 * 86400 * 1000);
+        // Fetch 90 days so an empty fortnight can still show "next up: PTown Aug 1"
+        const horizonMs = new Date(Date.now() + 90 * 86400 * 1000);
+        const fortnight = new Date(Date.now() + 14 * 86400 * 1000);
         const dayMap = {};
+        let nextUp = null; // first event BEYOND the 14-day list window
         for (const cal of picked) {
           const ev = await gFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events?` + new URLSearchParams({
             timeMin: now.toISOString(), timeMax: horizonMs.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '50',
@@ -160,6 +163,12 @@ export default async function handler(req, res) {
             const key = `${fmtET(d, { year: 'numeric' })}-${fmtET(d, { month: '2-digit' })}-${fmtET(d, { day: '2-digit' })}`;
             const label = fmtET(d, { weekday: 'short', month: 'numeric', day: 'numeric' });
             const time = e.start?.dateTime ? fmtET(d, { hour: 'numeric', minute: '2-digit' }) : '';
+            if (d > fortnight) {
+              if (!nextUp || startIso < nextUp.startIso) {
+                nextUp = { startIso, label, time, title: String(e.summary).slice(0, 80) };
+              }
+              continue; // beyond the list window — only the earliest becomes nextUp
+            }
             if (!dayMap[key]) dayMap[key] = { date: key, label, events: [] };
             if (dayMap[key].events.length < 8) {
               dayMap[key].events.push({ time, title: String(e.summary).slice(0, 80), calendar: source === 'all-calendars' ? (cal.summary || '').slice(0, 20) : '' });
@@ -167,7 +176,8 @@ export default async function handler(req, res) {
           }
         }
         const days = Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date));
-        await maDb.doc('tripData/calendar').set({ days, source, updatedAt: new Date().toISOString() });
+        if (nextUp) delete nextUp.startIso;
+        await maDb.doc('tripData/calendar').set({ days, nextUp: nextUp || null, source, updatedAt: new Date().toISOString() });
         calendarStatus = `${days.length} days from ${source}`;
         const nextEv = days[0]?.events?.[0];
         if (nextEv) lines.push(`Next on shared calendar: ${days[0].label} ${nextEv.time || ''} ${nextEv.title}.`);
