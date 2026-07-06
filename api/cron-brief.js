@@ -64,8 +64,8 @@ export default async function handler(req, res) {
     if (d.alertPrefs && d.alertPrefs.brief === false) {
       return res.status(200).json({ ok: true, skipped: 'briefs muted in app preferences' });
     }
-    if (etHour() !== briefHour(d.settings)) {
-      return res.status(200).json({ ok: true, skipped: `not brief hour (want ${briefHour(d.settings)} ET)` });
+    if (etHour() < briefHour(d.settings)) {
+      return res.status(200).json({ ok: true, skipped: `before brief hour (want ${briefHour(d.settings)} ET)` });
     }
 
     // Idempotency — the mini (or an earlier invocation) may have already sent it.

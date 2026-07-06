@@ -13,7 +13,12 @@ import OpenAI from 'openai';
 
 export function pickProvider(settings) {
   const p = (settings && settings.aiProvider) || process.env.AI_PROVIDER || 'openai';
-  return p === 'anthropic' ? 'anthropic' : 'openai';
+  const want = p === 'anthropic' ? 'anthropic' : 'openai';
+  // Fall back rather than crash when the chosen provider's key is missing —
+  // a mis-set toggle must never take down the morning brief (2026-07-06).
+  if (want === 'anthropic' && !process.env.ANTHROPIC_API_KEY) return 'openai';
+  if (want === 'openai' && !process.env.OPENAI_API_KEY && process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  return want;
 }
 
 export async function llmChat({ provider, system, messages, maxTokens = 1500 }) {
