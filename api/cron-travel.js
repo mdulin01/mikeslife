@@ -235,7 +235,7 @@ export default async function handler(req, res) {
             events: segs.filter((s) => ['activity', 'food', 'note'].includes(s.type)).map((s, i) => ({ id: 'me' + i, addedBy: 'Mike', name: s.title + (s.notes ? ' — ' + s.notes : ''), date: s.date, time: s.time || '', location: s.location || '' })),
             // Verbatim segments (2026-07-06): mikeandadam renders a mikestravel-style
             // day-by-day itinerary from these; the legacy arrays above stay for old UI bits.
-            segments: segs.map((g) => ({ id: g.id || '', type: g.type || 'note', title: g.title || '', date: g.date || '', time: g.time || '', conf: g.conf || '', location: g.location || '', notes: g.notes || '' })),
+            segments: segs.map((g) => ({ id: g.id || '', type: g.type || 'note', title: g.title || '', date: g.date || '', time: g.time || '', conf: g.conf || '', location: g.location || '', notes: g.notes || '', link: g.link || '' })),
             links: prev.links || [], packingList: prev.packingList || [], budget: prev.budget || { total: 0, expenses: [] }, photos: prev.photos || [], notes: prev.notes || [],
           };
         }
