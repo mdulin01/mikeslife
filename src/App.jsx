@@ -15,19 +15,19 @@ import {
   WEEK_DAYS, WEEK_EVENTS, MAILS, CODING_UPDATES,
 } from './seed';
 
-// One nav, two skins: these four live in the bottom dock (mobile) and the top bar
-// (desktop). Everything else lives inside the Hub page — no more side menu or More sheet.
+// One nav, two skins: these five live in the bottom dock (mobile) and the top bar
+// (desktop). Inbox/Calendar/People/Email live as a grid at the bottom of Home;
+// the Life tab holds the five pillars.
 const PRIMARY_TABS = [
-  ['home', '🏠', 'Home'], ['planning', '🗺️', 'Plans'], ['hub', '🧭', 'Hub'], ['vault', '🚨', 'Vault'],
+  ['home', '🏠', 'Home'], ['planning', '🗺️', 'Planning'], ['life', '🧭', 'Life'], ['memories', '📸', 'Memories'], ['vault', '🚨', 'Vault'],
 ];
-const HUB_ITEMS = [
+const HOME_ITEMS = [
   ['inbox', '📥', 'Inbox', 'Coach proposals + signals to triage'],
   ['calendar', '🗓️', 'Calendar', 'Your week, color-coded by pillar'],
   ['people', '👥', 'People', 'Personal · professional · opportunities'],
   ['email', '✉️', 'Email', 'Signals from your allow-listed lanes'],
-  ['memories', '📸', 'Memories', 'Moments & notes worth keeping'],
 ];
-const HUB_CHILDREN = new Set(HUB_ITEMS.map(([id]) => id));
+const HOME_CHILDREN = new Set(HOME_ITEMS.map(([id]) => id));
 
 
 // Mike is US Eastern — NEVER use toISOString() for "today" (it's UTC; after ~8pm ET
@@ -1198,14 +1198,13 @@ function FocusView({ focus, data, openRupert, onOpenApp }) {
   );
 }
 
-// ───────────────────────── Hub ─────────────────────────
-// The one place everything lives: the five pillars (status + tap to drill in)
-// and every secondary area. Replaces the old side menu / More sheet / top tiles.
-function HubView({ counts, proposals, openPillar, goTab }) {
+// ───────────────────────── Life ─────────────────────────
+// The strategic view: the five pillars — status at a glance, tap to drill in.
+function LifeView({ counts, openPillar }) {
   return (
     <section>
-      <div className="section-title">🧭 Hub <span className="dim" style={{ fontWeight: 500 }}>· your five pillars + everything else</span></div>
-      <div className="hero" style={{ marginBottom: 14 }}>
+      <div className="section-title">🧭 Life <span className="dim" style={{ fontWeight: 500 }}>· your five pillars — tap one to drill in</span></div>
+      <div className="hero lifegrid">
         {Object.entries(PILLARS).map(([k, p]) => {
           const c = `var(${COL[k]})`;
           const need = counts[k];
@@ -1219,18 +1218,24 @@ function HubView({ counts, proposals, openPillar, goTab }) {
           );
         })}
       </div>
-      <div className="hubgrid">
-        {HUB_ITEMS.map(([id, ic, label, sub]) => (
-          <button key={id} className="hubitem" onClick={() => goTab(id)}>
-            <span className="hi">{ic}</span>
-            <span style={{ minWidth: 0 }}>
-              <span className="ht">{label}{id === 'inbox' && proposals > 0 && <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{proposals}</span>}</span>
-              <span className="hs">{sub}</span>
-            </span>
-          </button>
-        ))}
-      </div>
     </section>
+  );
+}
+
+// Quick-access grid at the bottom of Home (Inbox, Calendar, People, Email).
+function HomeGrid({ proposals, goTab }) {
+  return (
+    <div className="hubgrid" style={{ marginTop: 4 }}>
+      {HOME_ITEMS.map(([id, ic, label, sub]) => (
+        <button key={id} className="hubitem" onClick={() => goTab(id)}>
+          <span className="hi">{ic}</span>
+          <span style={{ minWidth: 0 }}>
+            <span className="ht">{label}{id === 'inbox' && proposals > 0 && <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{proposals}</span>}</span>
+            <span className="hs">{sub}</span>
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -1598,11 +1603,11 @@ export default function App() {
         </div>
       </div>
 
-      {/* Desktop top bar — same four items as the mobile dock */}
+      {/* Desktop top bar — same five items as the mobile dock */}
       <nav className="topnav">
         {PRIMARY_TABS.map(([id, ic, label]) => (
-          <button className={'tab' + (!pillar && (tab === id || (id === 'hub' && HUB_CHILDREN.has(tab))) ? ' active' : '')} key={id} onClick={() => goTab(id)}>
-            {ic} {label}{id === 'hub' && data.proposals.length > 0 ? <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{data.proposals.length}</span> : null}
+          <button className={'tab' + (!pillar && (tab === id || (id === 'home' && HOME_CHILDREN.has(tab))) ? ' active' : '')} key={id} onClick={() => goTab(id)}>
+            {ic} {label}{id === 'home' && data.proposals.length > 0 ? <span className="pill" style={{ background: 'var(--teal)', color: '#04201c', marginLeft: 6 }}>{data.proposals.length}</span> : null}
           </button>
         ))}
       </nav>
@@ -1645,14 +1650,15 @@ export default function App() {
       ) : alertsOpen ? (
         <AlertsView alerts={data.alerts || []} onOpen={setOpenAlertId} onBack={() => setAlertsOpen(null)} autoFocusSearch={alertsOpen === 'search'} prefs={data.alertPrefs} setPref={setAlertPref} />
       ) : pillar ? (
-        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('hub')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
+        <PillarArea pk={pillar} proposals={data.proposals} plans={data.plans} onResolve={resolveProposal} onBack={() => goTab('life')} onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />
       ) : (
         <>
           {tab === 'home' && (
             <>
               <Today data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} setPlanStatus={setPlanStatus} dismissTask={dismissTask} />
+              <HomeGrid proposals={data.proposals.length} goTab={goTab} />
               {FIREBASE_READY && (
-                <div className="locrow">
+                <div className="locrow" style={{ marginTop: 12 }}>
                   <button className="btn def" onClick={captureLocation}>📍 Share my location with Rupert</button>
                   {locMsg && <span className="dim" style={{ fontSize: 12 }}>{locMsg}</span>}
                   {!locMsg && data.location && <span className="dim" style={{ fontSize: 12 }}>last: {data.location.place || `${data.location.lat}, ${data.location.lng}`} · {relTime(data.location.at)}</span>}
@@ -1660,8 +1666,8 @@ export default function App() {
               )}
             </>
           )}
-          {tab === 'hub' && <HubView counts={counts} proposals={data.proposals.length} openPillar={openPillar} goTab={goTab} />}
-          {HUB_CHILDREN.has(tab) && <button className="backbtn" onClick={() => goTab('hub')}>‹ hub</button>}
+          {tab === 'life' && <LifeView counts={counts} openPillar={openPillar} />}
+          {HOME_CHILDREN.has(tab) && <button className="backbtn" onClick={() => goTab('home')}>‹ home</button>}
           {tab === 'inbox' && <Inbox proposals={data.proposals} onResolve={resolveProposal} />}
           {tab === 'calendar' && <Calendar data={data} />}
           {tab === 'email' && <Email data={data} />}
@@ -1695,13 +1701,13 @@ export default function App() {
       {/* Fixed overlays live OUTSIDE the scrolling <main> so iOS anchors them to the
           viewport rather than a scrolled/animated ancestor — this is what kept the
           floating dock from drifting up the screen on the brief/focus views. */}
-      {/* Mobile floating dock — same four items as the desktop top bar (peacock lives in the header) */}
+      {/* Mobile floating dock — same five items as the desktop top bar (peacock lives in the header) */}
       <div className="dock">
         {PRIMARY_TABS.map(([id, ic, lb]) => (
-          <button key={id} className={'dock-item' + (!pillar && (tab === id || (id === 'hub' && HUB_CHILDREN.has(tab))) ? ' active' : '')}
+          <button key={id} className={'dock-item' + (!pillar && (tab === id || (id === 'home' && HOME_CHILDREN.has(tab))) ? ' active' : '')}
             onClick={() => goTab(id)}>
             <span className="di">{ic}</span>{lb}
-            {id === 'hub' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}
+            {id === 'home' && data.proposals.length > 0 && <span className="dock-badge">{data.proposals.length}</span>}
           </button>
         ))}
       </div>
