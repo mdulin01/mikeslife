@@ -1,4 +1,118 @@
 import { useState } from 'react';
+import { storage } from './firebase';
+import { ref as sRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+
+// ---- Document vault: real files (PDF/scans) in Firebase Storage, indexed in
+// lifeos.vaultDocs. Owner-only via storage.rules (vault/{uid}/**); to share with
+// Adam later, widen the rule — see storage.rules at repo root.
+const CATS = [
+  ['legal', '⚖️ Estate / legal'],
+  ['property', '🏠 Property / financial'],
+  ['identity', '🪪 Identity / medical'],
+  ['tax', '🧾 Taxes'],
+];
+const CAT_LABEL = Object.fromEntries(CATS);
+const MAX_MB = 20;
+const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+const daysUntil = (d) => Math.ceil((new Date(d + 'T12:00:00') - Date.now()) / 86400000);
+
+function DocumentsSection({ user, docs, setVaultDocs }) {
+  const [cat, setCat] = useState('all');
+  const [upCat, setUpCat] = useState('legal');
+  const [busy, setBusy] = useState(false);
+  const ready = Boolean(storage && user);
+  const shown = docs
+    .filter((d) => cat === 'all' || d.category === cat)
+    .slice()
+    .sort((a, b) => String(b.uploadedAt || '').localeCompare(String(a.uploadedAt || '')));
+
+  const onFile = async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!file || !ready || busy) return;
+    if (file.size > MAX_MB * 1048576) { alert(`Max ${MAX_MB} MB per file.`); return; }
+    setBusy(true);
+    try {
+      const id = 'v' + Date.now();
+      const path = `vault/${user.uid}/${id}-${file.name}`;
+      const r = sRef(storage, path);
+      await uploadBytes(r, file, { contentType: file.type || 'application/octet-stream' });
+      const url = await getDownloadURL(r);
+      setVaultDocs([{
+        id, name: file.name, path, url, category: upCat,
+        size: file.size, contentType: file.type || '',
+        uploadedAt: new Date().toISOString(), expires: '',
+      }, ...docs]);
+    } catch (e) {
+      alert('Upload failed: ' + (e.message || e.code || e));
+    } finally { setBusy(false); }
+  };
+
+  const del = async (d) => {
+    if (!window.confirm(`Delete "${d.name}"? The file is removed permanently.`)) return;
+    try {
+      if (storage && d.path) await deleteObject(sRef(storage, d.path));
+    } catch (e) {
+      if (e.code !== 'storage/object-not-found') { alert('Delete failed: ' + (e.message || e.code)); return; }
+    }
+    setVaultDocs(docs.filter((x) => x.id !== d.id));
+  };
+
+  const setExpires = (d, expires) => setVaultDocs(docs.map((x) => (x.id === d.id ? { ...x, expires } : x)));
+
+  return (
+    <>
+      <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <span>📁 Documents</span>
+        <label className="btn app" style={{ fontSize: 13, cursor: ready && !busy ? 'pointer' : 'not-allowed', opacity: ready ? 1 : 0.5 }}>
+          {busy ? '⏳ Uploading…' : '📤 Add document'}
+          <input type="file" hidden disabled={!ready || busy} onChange={onFile} />
+        </label>
+      </div>
+      <p className="banner" style={{ marginTop: 0 }}>
+        Will, POA, deeds, titles, passport scans, filed returns — stored in your own Firebase Storage, owner-locked.
+        New uploads land in the selected category. Set an expiry on anything that renews (passport, insurance) and it flags itself 60 days out.
+      </p>
+      {!ready && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <p className="dim" style={{ margin: 0, fontSize: 13 }}>
+            ⚠️ Storage isn't configured yet — enable the Storage product on mikeslife-963c6 (Blaze), publish storage.rules, and set VITE_FIREBASE_STORAGE_BUCKET in Vercel. Uploads unlock automatically after redeploy.
+          </p>
+        </div>
+      )}
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+        {[['all', 'All'], ...CATS].map(([k, lbl]) => (
+          <button key={k} className={'btn ' + (cat === k ? 'app' : 'def')} style={{ fontSize: 12 }}
+            onClick={() => { setCat(k); if (k !== 'all') setUpCat(k); }}>
+            {lbl}{k !== 'all' ? ` (${docs.filter((d) => d.category === k).length})` : ''}
+          </button>
+        ))}
+        <span className="dim" style={{ fontSize: 12, marginLeft: 'auto' }}>uploads → {CAT_LABEL[upCat]}</span>
+      </div>
+      <div className="card" style={{ marginBottom: 16 }}>
+        {shown.length === 0 && <p className="dim" style={{ margin: 0, fontSize: 13 }}>Nothing here yet.</p>}
+        {shown.map((d) => {
+          const dleft = d.expires ? daysUntil(d.expires) : null;
+          return (
+            <div key={d.id} className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '7px 0', borderBottom: '1px solid var(--line)' }}>
+              <a href={d.url} target="_blank" rel="noreferrer" style={{ flex: '2 1 200px', minWidth: 0, color: 'var(--txt)', fontSize: 14, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {(d.contentType || '').includes('pdf') ? '📄' : (d.contentType || '').startsWith('image/') ? '🖼️' : '📎'} {d.name}
+              </a>
+              <span className="dim" style={{ fontSize: 12 }}>{CAT_LABEL[d.category] || d.category}</span>
+              <span className="dim" style={{ fontSize: 12 }}>{d.size ? fmtSize(d.size) : ''} · {String(d.uploadedAt || '').slice(0, 10)}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                {dleft != null && dleft <= 60 && <span style={{ fontSize: 12, color: dleft < 0 ? 'var(--red, #f87171)' : 'var(--amber, #fbbf24)' }}>{dleft < 0 ? '⚠ expired' : `⏳ ${dleft}d`}</span>}
+                <input type="date" value={d.expires || ''} onChange={(ev) => setExpires(d, ev.target.value)} title="Expiry / renewal date (optional)"
+                  style={{ background: 'var(--panel2)', color: d.expires ? 'var(--txt)' : 'var(--dim, #888)', border: '1px solid var(--line)', borderRadius: 8, padding: '4px 6px', fontSize: 12 }} />
+              </span>
+              <button className="btn def" style={{ fontSize: 12 }} onClick={() => del(d)}>✕</button>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
 
 // Emergency one-pager — the single sheet someone needs if Mike is incapacitated.
 // Structured, editable, printable. Stored in lifeos.emergency. NO passwords (a
@@ -20,7 +134,7 @@ const TEXTS = [
   ['whereThingsAre', 'Where things are (accounts, safe, key docs — NO passwords)', true],
 ];
 
-export default function VaultView({ data, setEmergency }) {
+export default function VaultView({ data, setEmergency, setVaultDocs, user }) {
   const e = data.emergency || {};
   const [draft, setDraft] = useState(e);
   const merged = { ...e, ...draft };
@@ -61,6 +175,8 @@ export default function VaultView({ data, setEmergency }) {
 
   return (
     <section>
+      <DocumentsSection user={user} docs={Array.isArray(data.vaultDocs) ? data.vaultDocs : []} setVaultDocs={setVaultDocs} />
+
       <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <span>🚨 Emergency one-pager</span>
         <button className="btn app" style={{ fontSize: 13 }} onClick={printIt}>🖨️ Print / Save PDF</button>

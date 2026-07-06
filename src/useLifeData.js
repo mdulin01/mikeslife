@@ -210,6 +210,12 @@ export function useLifeData(user) {
     mutate((p) => ({ ...p, emergency }), ['emergency']);
   }, [mutate]);
 
+  // Document vault (Vault tab): metadata index for files stored in Firebase
+  // Storage under vault/{uid}/ — the files live in Storage, this array is the index.
+  const setVaultDocs = useCallback((vaultDocs) => {
+    mutate((p) => ({ ...p, vaultDocs }), ['vaultDocs']);
+  }, [mutate]);
+
   const setCommitments = useCallback((text) => {
     mutate((p) => ({ ...p, commitments: text }), ['commitments']);
   }, [mutate]);
@@ -420,7 +426,7 @@ export function useLifeData(user) {
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument,
     addPerson, deletePerson, addPeople,
-    setLocation, setFcmToken, setCommitments, setEmergency,
+    setLocation, setFcmToken, setCommitments, setEmergency, setVaultDocs,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem, dismissTask,
     setAlertPref, setAlertItemFeedback, setSetting,

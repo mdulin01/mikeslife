@@ -1,0 +1,22 @@
+rules_version = '2';
+
+// Document vault — files under vault/{uid}/** are owner-only.
+// Publish in Firebase console: Storage → Rules (or `firebase deploy --only storage`).
+//
+// To give Adam read access later, change the read rule to:
+//   allow read: if request.auth != null &&
+//     (request.auth.uid == uid || request.auth.token.email == 'ADAMS_EMAIL');
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /vault/{uid}/{allPaths=**} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                            && request.resource.size < 20 * 1024 * 1024;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    // Everything else: locked.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

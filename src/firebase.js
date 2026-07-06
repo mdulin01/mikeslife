@@ -2,6 +2,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const cfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -19,12 +20,16 @@ let app = null;
 let auth = null;
 let db = null;
 let provider = null;
+let storage = null;
 
 if (FIREBASE_READY) {
   app = initializeApp(cfg);
   auth = getAuth(app);
   db = getFirestore(app);
   provider = new GoogleAuthProvider();
+  // Document vault (Vault tab). Needs the Storage product enabled on the
+  // Firebase project (Blaze) + VITE_FIREBASE_STORAGE_BUCKET set; harmless until used.
+  try { storage = cfg.storageBucket ? getStorage(app) : null; } catch { storage = null; }
 }
 
-export { app, auth, db, provider };
+export { app, auth, db, provider, storage };

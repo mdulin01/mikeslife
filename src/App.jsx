@@ -1360,7 +1360,7 @@ export default function App() {
     updateOdyssey, addGoodTime, setMindTopic, addMindBranch, removeMindBranch,
     addMemory, deleteMemory, addDocument, deleteDocument, setEmergency,
     addPerson, deletePerson, addPeople,
-    setLocation, setFcmToken, setCommitments,
+    setLocation, setFcmToken, setCommitments, setVaultDocs,
     setAlertFeedback, deleteAlert,
     setTodayItems, markTodayDone, delayTodayItem, addTodayItem, dismissTask,
     setAlertPref, setAlertItemFeedback, submitDayPlan, setSetting,
@@ -1639,7 +1639,7 @@ export default function App() {
           {tab === 'people' && <People people={data.people} addPerson={addPerson} deletePerson={deletePerson} addPeople={addPeople} />}
           {tab === 'memories' && <MemoriesView data={data} addMemory={addMemory} deleteMemory={deleteMemory} addDocument={addDocument} deleteDocument={deleteDocument} />}
           {tab === 'patterns' && <PatternsView data={data} />}
-          {tab === 'vault' && <VaultView data={data} setEmergency={setEmergency} />}
+          {tab === 'vault' && <VaultView data={data} setEmergency={setEmergency} setVaultDocs={setVaultDocs} user={user} />}
         </>
       )}
 
