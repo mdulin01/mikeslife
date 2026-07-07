@@ -54,12 +54,38 @@ function Chip({ topic }) {
   return <span className="pill" style={{ background: 'rgba(148,163,184,.14)', color: c, flex: '0 0 auto' }}>{topic}</span>;
 }
 
+// Heuristic end-date for strings like "Jan 6–9, 2026", "Aug 2026", "Fall 2026".
+// Past conferences auto-hide even if the weekly refresh cron hasn't run.
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+const SEASONS = { winter: 1, spring: 4, summer: 7, fall: 10, autumn: 10 };
+function confEnds(dateStr) {
+  const s = String(dateStr || '').toLowerCase();
+  const year = (s.match(/20\d\d/) || [])[0];
+  if (!year) return null; // unparseable → keep
+  let month = -1;
+  for (const [name, idx] of Object.entries({ ...MONTHS, ...SEASONS })) {
+    const at = s.lastIndexOf(name);
+    if (at >= 0 && (month === -1 || at > month.at)) month = { at, idx };
+  }
+  const mi = month === -1 ? 11 : month.idx;
+  const days = (s.match(/\b([12]?\d|3[01])\b(?!\d)/g) || []).map(Number).filter((n) => n <= 31);
+  const day = days.length ? Math.max(...days) : new Date(+year, mi + 1, 0).getDate();
+  return new Date(+year, mi, day, 23, 59);
+}
+const notPast = (x) => { const end = x.date ? confEnds(x.date) : null; return !end || end >= new Date(); };
+
 const SUBS = [['podcasts', '🎧 Listen'], ['courses', '🎓 Learn'], ['conferences', '📅 Conferences']];
 
-export default function PurposeLearning() {
+export default function PurposeLearning({ learning }) {
   const [sub, setSub] = useState('podcasts');
   const [filter, setFilter] = useState('All');
-  const items = LEARNING[sub].filter((x) => filter === 'All' || x.topic === filter);
+  // Conferences prefer the Rupert-refreshed list (lifeos.learning, weekly cron);
+  // static seed is the fallback. Past-dated events are hidden either way.
+  const lists = {
+    ...LEARNING,
+    conferences: ((learning && learning.conferences && learning.conferences.length ? learning.conferences : LEARNING.conferences) || []).filter(notPast),
+  };
+  const items = lists[sub].filter((x) => filter === 'All' || x.topic === filter);
 
   return (
     <div className="card learnhub">
@@ -93,7 +119,9 @@ export default function PurposeLearning() {
         ))}
       </div>
 
-      <p className="banner" style={{ textAlign: 'left' }}>Rupert’s commute podcasts now live here. Conferences also surface from your email when invites land — promote the good ones into a Plan.</p>
+      <p className="banner" style={{ textAlign: 'left' }}>
+        Rupert’s commute podcasts now live here. Conferences roll forward automatically — past events drop off, and Rupert refreshes next occurrences weekly{learning && learning.refreshedAt ? ` (last: ${String(learning.refreshedAt).slice(0, 10)})` : ' (first refresh: next Sunday)'}. Always confirm dates on the event site.
+      </p>
     </div>
   );
 }

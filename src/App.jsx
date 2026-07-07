@@ -1127,7 +1127,7 @@ function CodingUpdates() {
   );
 }
 
-function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick, peopleSection }) {
+function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick, peopleSection, learning }) {
   const p = PILLARS[pk];
   const c = `var(${COL[pk]})`;
   const props = proposals.filter((x) => x.pk === pk);
@@ -1148,7 +1148,7 @@ function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick, peop
         <div className="card"><h3>Plans in this area <span className="dim" style={{ fontWeight: 500, textTransform: 'none' }}>· tap one to start planning</span></h3>
           <div className="cgrid">{myplans.map((x) => <div key={x.id} onClick={() => onPlanClick(x)} style={{ cursor: 'pointer' }}><PlanCard p={x} /></div>)}</div></div>
       )}
-      {pk === 'purpose' && <PurposeLearning />}
+      {pk === 'purpose' && <PurposeLearning learning={learning} />}
       {pk === 'rel' && peopleSection}
     </section>
   );
@@ -1265,7 +1265,7 @@ function LifeView({ counts, pillar, openPillar, data, proposals, onResolve, onPl
         })}
       </div>
       {pillar
-        ? <PillarArea pk={pillar} proposals={proposals} plans={data.plans} onResolve={onResolve} onPlanClick={onPlanClick} peopleSection={peopleSection} />
+        ? <PillarArea pk={pillar} proposals={proposals} plans={data.plans} onResolve={onResolve} onPlanClick={onPlanClick} peopleSection={peopleSection} learning={data.learning} />
         : <p className="banner">Status lines come from what Rupert syncs overnight (training, money, health, travel) + your plans and memories here.</p>}
     </section>
   );
