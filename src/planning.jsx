@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { COL, PILLAR_LABEL, ODYSSEY_GAUGES } from './seed';
 
-const SUBTABS = [['plans', 'Plans'], ['odyssey', 'Odyssey'], ['mindmap', 'Mind Map'], ['journal', 'Good Time Journal']];
+const SUBTABS = [['today', 'Today'], ['plans', 'Plans'], ['odyssey', 'Odyssey'], ['mindmap', 'Mind Map'], ['journal', 'Good Time Journal']];
 
 function pillarPill(pk) {
   const c = `var(${COL[pk]})`;
@@ -211,7 +211,7 @@ function Journal({ data, addGoodTime }) {
 
 // ───────────── Hub ─────────────
 export default function PlanningHub(props) {
-  const [sub, setSub] = useState('plans');
+  const [sub, setSub] = useState('today');
   return (
     <section>
       <div className="substrip">
@@ -219,6 +219,7 @@ export default function PlanningHub(props) {
           <button key={id} className={sub === id ? 'on' : ''} onClick={() => setSub(id)}>{label}</button>
         ))}
       </div>
+      {sub === 'today' && props.todaySection}
       {sub === 'plans' && <Plans {...props} />}
       {sub === 'odyssey' && <Odyssey {...props} />}
       {sub === 'mindmap' && <MindMap {...props} />}

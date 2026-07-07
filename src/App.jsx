@@ -23,7 +23,7 @@ const PRIMARY_TABS = [
   ['life', '🧭', 'Life'], ['memories', '📸', 'Memories'], ['vault', '🚨', 'Vault'],
 ];
 const HOME_SUBTABS = [
-  ['brief', '☀️', "Today's brief"], ['plan', '🎯', 'Planning'], ['signals', '📥', 'Signals'],
+  ['brief', '☀️', "Today's brief"], ['signals', '📥', 'Signals'],
 ];
 
 
@@ -1696,7 +1696,16 @@ export default function App() {
                 ))}
               </div>
               {homeTab === 'brief' && <BriefView data={data} onOpenAlert={setOpenAlertId} onAllAlerts={() => setAlertsOpen('list')} onSearchAlerts={() => setAlertsOpen('search')} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} toggleTask={toggleTask} setPlanStatus={setPlanStatus} markTodayDone={markTodayDone} />}
-              {homeTab === 'plan' && (
+              {homeTab === 'signals' && <Signals proposals={data.proposals} onResolve={resolveProposal} data={data} />}
+            </>
+          )}
+          {tab === 'life' && <LifeView counts={counts} pillar={pillar} openPillar={openPillar} data={data}
+            proposals={data.proposals} onResolve={resolveProposal}
+            onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />}
+          {tab === 'calendar' && <Calendar data={data} />}
+          {tab === 'planning' && (
+            <PlanningHub
+              todaySection={(
                 <>
                   <TodayPlan data={data} onOpenAlert={setOpenAlertId} markTodayDone={markTodayDone} delayTodayItem={delayTodayItem} onPlanMore={() => setFocus('checkin')} setTaskNote={setTaskNote} toggleTask={toggleTask} dismissTask={dismissTask} />
                   {FIREBASE_READY && (
@@ -1708,15 +1717,6 @@ export default function App() {
                   )}
                 </>
               )}
-              {homeTab === 'signals' && <Signals proposals={data.proposals} onResolve={resolveProposal} data={data} />}
-            </>
-          )}
-          {tab === 'life' && <LifeView counts={counts} pillar={pillar} openPillar={openPillar} data={data}
-            proposals={data.proposals} onResolve={resolveProposal}
-            onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />}
-          {tab === 'calendar' && <Calendar data={data} />}
-          {tab === 'planning' && (
-            <PlanningHub
               data={data}
               activatePlan={activatePlan}
               setPlanStatus={setPlanStatus}
