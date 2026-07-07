@@ -19,7 +19,7 @@ import {
 // The Rupert tab (id 'home' for deep-link back-compat) holds three sub-tabs:
 // Today's brief · Planning (today's items) · Signals.
 const PRIMARY_TABS = [
-  ['home', '🦚', 'Rupert'], ['planning', '🗺️', 'Planning'], ['calendar', '🗓️', 'Calendar'], ['people', '👥', 'People'],
+  ['home', '🦚', 'Rupert'], ['planning', '🗺️', 'Planning'], ['calendar', '🗓️', 'Calendar'],
   ['life', '🧭', 'Life'], ['memories', '📸', 'Memories'], ['vault', '🚨', 'Vault'],
 ];
 const HOME_SUBTABS = [
@@ -812,6 +812,7 @@ function BriefView({ data, onOpenAlert, onAllAlerts, onSearchAlerts, activatePla
           <div className="between"><h3 style={{ margin: 0 }}>☀️ Rupert's brief</h3><span className="dim" style={{ fontSize: 12 }}>{data.todayBrief.date || ''}</span></div>
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55, marginTop: 10 }}><Linkified text={brief} /></div>
           <BriefActions brief={brief} plans={data.plans} todayItems={data.todayItems} activatePlan={activatePlan} addTodayItem={addTodayItem} goTab={goTab} toggleTask={toggleTask} setPlanStatus={setPlanStatus} markTodayDone={markTodayDone} />
+          <button className="btn app" style={{ marginTop: 12 }} onClick={() => goTab('planning')}>🎯 Today's plan →</button>
         </div>
       ) : <p className="banner">No brief yet today — it lands each morning at your set time (⚙️ Settings).</p>}
 
@@ -1126,7 +1127,7 @@ function CodingUpdates() {
   );
 }
 
-function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick }) {
+function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick, peopleSection }) {
   const p = PILLARS[pk];
   const c = `var(${COL[pk]})`;
   const props = proposals.filter((x) => x.pk === pk);
@@ -1148,6 +1149,7 @@ function PillarArea({ pk, proposals, plans, onResolve, onBack, onPlanClick }) {
           <div className="cgrid">{myplans.map((x) => <div key={x.id} onClick={() => onPlanClick(x)} style={{ cursor: 'pointer' }}><PlanCard p={x} /></div>)}</div></div>
       )}
       {pk === 'purpose' && <PurposeLearning />}
+      {pk === 'rel' && peopleSection}
     </section>
   );
 }
@@ -1242,7 +1244,7 @@ function pillarStatus(data) {
   return { health, rel, fin, purpose, fun };
 }
 
-function LifeView({ counts, pillar, openPillar, data, proposals, onResolve, onPlanClick }) {
+function LifeView({ counts, pillar, openPillar, data, proposals, onResolve, onPlanClick, peopleSection }) {
   const status = pillarStatus(data);
   return (
     <section>
@@ -1263,7 +1265,7 @@ function LifeView({ counts, pillar, openPillar, data, proposals, onResolve, onPl
         })}
       </div>
       {pillar
-        ? <PillarArea pk={pillar} proposals={proposals} plans={data.plans} onResolve={onResolve} onPlanClick={onPlanClick} />
+        ? <PillarArea pk={pillar} proposals={proposals} plans={data.plans} onResolve={onResolve} onPlanClick={onPlanClick} peopleSection={peopleSection} />
         : <p className="banner">Status lines come from what Rupert syncs overnight (training, money, health, travel) + your plans and memories here.</p>}
     </section>
   );
@@ -1607,7 +1609,12 @@ export default function App() {
 
   const now = new Date();
   const openPillar = (k) => { setPillar((cur) => (cur === k ? null : k)); setTab('life'); };
-  const goTab = (t) => { setPillar(null); setOpenAlertId(null); setAlertsOpen(null); setSearchOpen(false); setTab(t); };
+  const goTab = (t) => {
+    setOpenAlertId(null); setAlertsOpen(null); setSearchOpen(false);
+    // People now lives inside Life → Relationships; legacy 'people' links land there.
+    if (t === 'people') { setPillar('rel'); setTab('life'); return; }
+    setPillar(null); setTab(t);
+  };
   // "Do it" on an inbox proposal: commit its concrete next-step onto Today's list
   // (so it has a real home), clear the proposal, and jump to Home to see it land.
   const doProposal = (p) => {
@@ -1701,7 +1708,8 @@ export default function App() {
           )}
           {tab === 'life' && <LifeView counts={counts} pillar={pillar} openPillar={openPillar} data={data}
             proposals={data.proposals} onResolve={resolveProposal}
-            onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }} />}
+            onPlanClick={(p) => { if (p.status !== 'active' && p.status !== 'done') activatePlan(p.id); goTab('planning'); }}
+            peopleSection={<People people={data.people} addPerson={addPerson} deletePerson={deletePerson} addPeople={addPeople} updatePerson={updatePerson} />} />}
           {tab === 'calendar' && <Calendar data={data} />}
           {tab === 'planning' && (
             <PlanningHub
@@ -1731,7 +1739,6 @@ export default function App() {
               removeMindBranch={removeMindBranch}
             />
           )}
-          {tab === 'people' && <People people={data.people} addPerson={addPerson} deletePerson={deletePerson} addPeople={addPeople} updatePerson={updatePerson} />}
           {tab === 'memories' && <MemoriesView data={data} addMemory={addMemory} deleteMemory={deleteMemory} addDocument={addDocument} deleteDocument={deleteDocument} />}
           {tab === 'vault' && <VaultView data={data} setEmergency={setEmergency} setVaultDocs={setVaultDocs} user={user} people={data.people} />}
         </>
