@@ -1,6 +1,6 @@
 // On-demand read endpoint for Mike's coding.html boards (mikedulinmd-cf65b
-// Firestore) so Claude/Cowork sessions can pull Capture + Roadmap + AI context
-// + the secrets INDEX (names/rotation only — never values) at session start,
+// Firestore) so Claude/Cowork sessions can pull the private Folio plan + Capture
+// + Roadmap + AI context + the secrets INDEX (names/rotation only — never values) at session start,
 // without a mounted service-account key. coding.html stays the single place
 // Mike edits; this is a read-only mirror.
 //
@@ -45,20 +45,22 @@ export default async function handler(req, res) {
     if (!app) app = initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SA_MIKEDULINMD)) }, 'mdmd');
     const db = getFirestore(app);
 
-    const [itemsSnap, roadmapSnap, ctxSnap, secretsSnap] = await Promise.all([
+    const [itemsSnap, roadmapSnap, ctxSnap, secretsSnap, folioSnap] = await Promise.all([
       db.collection('coding_items').orderBy('createdAt', 'desc').limit(100).get(),
       db.collection('coding_roadmap').get(),
       db.doc('coding_meta/aiContext').get(),
       db.collection('coding_secrets').orderBy('name', 'asc').get(),
+      db.doc('coding_meta/folioPlan').get(),
     ]);
     const items = itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const roadmap = roadmapSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const secrets = secretsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const ctx = ctxSnap.exists ? ctxSnap.data() : {};
     const aiContext = ctx.summary || '';
+    const folioPlan = folioSnap.exists ? folioSnap.data() : null;
 
     if (req.query.format === 'json') {
-      return res.status(200).json({ items, roadmap, aiContext, handoff: ctx.handoff || null, secrets, fetchedAt: new Date().toISOString() });
+      return res.status(200).json({ items, roadmap, folioPlan, aiContext, handoff: ctx.handoff || null, secrets, fetchedAt: new Date().toISOString() });
     }
 
     const weekAgo = Date.now() - 7 * 86400 * 1000;
@@ -67,6 +69,28 @@ export default async function handler(req, res) {
     const cols = [['doing', 'In progress'], ['next', 'Next up'], ['idea', 'Ideas'], ['done', 'Done']];
     const md = [];
     md.push(`# Coding boards (coding.html) — fetched ${new Date().toISOString().slice(0, 16)}Z`);
+    if (folioPlan) {
+      md.push(`\n## ♥ Folio founder plan${folioPlan.updatedAt ? ` — saved ${ts(folioPlan.updatedAt)}` : ''}`);
+      md.push(`- Outcome: ${folioPlan.objective || 'not recorded'}`);
+      md.push(`- Current milestone: ${folioPlan.milestone || 'not recorded'}`);
+      md.push(`- Pilot target: ${folioPlan.target || 'not recorded'}`);
+      md.push(`- Exact next action: ${folioPlan.nextAction || 'not recorded'}`);
+      md.push(`- Blockers / decisions: ${folioPlan.blockers || 'none recorded'}`);
+      for (const phase of folioPlan.phases || []) {
+        md.push(`\n### ${phase.label || 'Phase'} — ${phase.title || 'Untitled'} [${phase.status || 'planned'}]`);
+        if (phase.notes) md.push(phase.notes);
+        for (const item of phase.items || []) md.push(`- [${item.done ? 'x' : ' '}] ${item.text || ''}`);
+      }
+      md.push(`\n### Launch gate`);
+      for (const gate of folioPlan.gates || []) md.push(`- [${gate.done ? 'x' : ' '}] ${gate.text || ''}`);
+      md.push(`\n### Decisions`);
+      for (const decision of folioPlan.decisions || []) md.push(`- [${decision.status || 'open'}] ${decision.title || 'Decision'}: ${decision.note || ''}`);
+      const measured = (folioPlan.metrics || []).filter((m) => m.actual);
+      if (measured.length) {
+        md.push(`\n### Pilot measures with observations`);
+        for (const metric of measured) md.push(`- ${metric.label}: ${metric.actual} (target: ${metric.target || 'not set'})`);
+      }
+    }
     md.push(`\n## 🐛 Capture — ${open.length} open`);
     for (const i of open) md.push(`- [${i.type || i.kind || 'item'} · ${i.project || i.app || '?'} · ${ts(i.createdAt)}] ${i.title}${i.notes ? ` — ${i.notes}` : ''}`);
     if (recentDone.length) { md.push(`\n### Done this week`); for (const i of recentDone) md.push(`- ✓ [${i.project || i.app || '?'}] ${i.title}`); }
